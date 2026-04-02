@@ -1,0 +1,31 @@
+{
+  "folders": [
+    {
+      "path": "backend"
+    },
+    {
+      "path": "web"
+    },
+    {
+      "path": "python-client"
+    },
+    {
+      "path": "flutter-app"
+    }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "python3",
+    "editor.formatOnSave": true,
+    "files.autoSave": "afterDelay",
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-python.python",
+      "ms-azuretools.vscode-docker",
+      "esbenp.prettier-vscode",
+      "dbaeumer.vscode-eslint",
+      "dart-code.dart-code",
+      "dart-code.flutter",
+    ],
+  },
+}
