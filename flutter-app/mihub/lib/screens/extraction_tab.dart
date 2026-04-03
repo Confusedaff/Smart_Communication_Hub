@@ -21,6 +21,7 @@ class _ExtractionTabState extends State<ExtractionTab> {
   ExtractionModel? _extraction;
   bool _isLoading = false;
   String? _error;
+  // ignore: unused_field
   Map<String, dynamic>? _rawJson;
 
   @override

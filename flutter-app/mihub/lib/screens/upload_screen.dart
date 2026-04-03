@@ -22,6 +22,11 @@ class _UploadScreenState extends State<UploadScreen>
   String? _errorMessage;
   String? _uploadStatus;
   bool _backendOnline = false;
+  int _reconnectAttempts = 0;
+  bool _isReconnecting = false;
+  static const int _maxReconnectAttempts = 5;
+  static const Duration _reconnectInterval = Duration(seconds: 2);
+
   late AnimationController _pulseController;
   late Animation<double> _pulseAnim;
   final TextEditingController _urlController =
@@ -51,11 +56,93 @@ class _UploadScreenState extends State<UploadScreen>
     setState(() => _isCheckingHealth = true);
     try {
       await ApiService.getHealth();
-      if (mounted) setState(() => _backendOnline = true);
+      if (mounted) {
+        setState(() {
+          _backendOnline = true;
+          _reconnectAttempts = 0;
+          _isReconnecting = false;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _backendOnline = false);
     } finally {
       if (mounted) setState(() => _isCheckingHealth = false);
+    }
+  }
+
+  /// Called after the user taps "Set" — updates the URL and starts
+  /// auto-reconnect attempts until the backend responds or we give up.
+  Future<void> _saveUrlAndReconnect() async {
+    final newUrl = _urlController.text.trim();
+    if (newUrl.isEmpty) return;
+
+    ApiService.setBaseUrl(newUrl);
+    FocusScope.of(context).unfocus();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Backend URL updated — trying to connect…')),
+    );
+
+    setState(() {
+      _backendOnline = false;
+      _reconnectAttempts = 0;
+      _isReconnecting = true;
+      _errorMessage = null;
+    });
+
+    await _autoReconnect();
+  }
+
+  Future<void> _autoReconnect() async {
+    while (_reconnectAttempts < _maxReconnectAttempts) {
+      if (!mounted) return;
+
+      setState(() {
+        _isCheckingHealth = true;
+        _reconnectAttempts++;
+      });
+
+      try {
+        await ApiService.getHealth();
+        if (mounted) {
+          setState(() {
+            _backendOnline = true;
+            _isReconnecting = false;
+            _isCheckingHealth = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Connected successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return; // success — stop retrying
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _backendOnline = false;
+            _isCheckingHealth = false;
+          });
+        }
+      }
+
+      if (_reconnectAttempts < _maxReconnectAttempts) {
+        await Future.delayed(_reconnectInterval);
+      }
+    }
+
+    // All attempts exhausted
+    if (mounted) {
+      setState(() => _isReconnecting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not reach ${ApiService.baseUrl} after $_maxReconnectAttempts attempts.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -115,15 +202,6 @@ class _UploadScreenState extends State<UploadScreen>
         });
       }
     }
-  }
-
-  void _saveUrl() {
-    ApiService.setBaseUrl(_urlController.text.trim());
-    _checkHealth();
-    FocusScope.of(context).unfocus();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Backend URL updated to ${ApiService.baseUrl}')),
-    );
   }
 
   @override
@@ -360,11 +438,24 @@ class _UploadScreenState extends State<UploadScreen>
               Row(
                 children: [
                   if (_isCheckingHealth)
-                    SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: t.accent),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: t.accent),
+                        ),
+                        if (_isReconnecting) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            '$_reconnectAttempts/$_maxReconnectAttempts',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: t.textMuted),
+                          ),
+                        ],
+                      ],
                     )
                   else
                     StatusBadge(
@@ -373,9 +464,10 @@ class _UploadScreenState extends State<UploadScreen>
                     ),
                   const SizedBox(width: 8),
                   GestureDetector(
-                    onTap: _checkHealth,
+                    onTap: _isReconnecting ? null : _checkHealth,
                     child: Icon(Icons.refresh_rounded,
-                        size: 18, color: t.textMuted),
+                        size: 18,
+                        color: _isReconnecting ? t.textMuted.withOpacity(0.4) : t.textMuted),
                   ),
                 ],
               ),
@@ -397,26 +489,46 @@ class _UploadScreenState extends State<UploadScreen>
                     hintText: 'http://10.0.2.2:8000',
                     isDense: true,
                   ),
-                  onSubmitted: (_) => _saveUrl(),
+                  onSubmitted: (_) => _saveUrlAndReconnect(),
                 ),
               ),
               const SizedBox(width: 10),
               OutlinedButton(
-                onPressed: _saveUrl,
+                onPressed: _isReconnecting ? null : _saveUrlAndReconnect,
                 style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 14)),
-                child: const Text('Set'),
+                child: Text(_isReconnecting ? 'Connecting…' : 'Set'),
               ),
             ],
           ),
+
+          // Reconnect progress bar
+          if (_isReconnecting) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: _reconnectAttempts / _maxReconnectAttempts,
+                backgroundColor: t.border,
+                color: t.accent,
+                minHeight: 3,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Attempt $_reconnectAttempts of $_maxReconnectAttempts — retrying in ${_reconnectInterval.inSeconds}s…',
+              style: TextStyle(fontSize: 11, color: t.textMuted),
+            ),
+          ],
+
           const SizedBox(height: 12),
           Wrap(
             spacing: 16,
             runSpacing: 4,
             children: [
               _connectionHint(t, 'Emulator', 'http://10.0.2.2:8000'),
-              _connectionHint(t, 'iOS Sim', 'http://localhost:8000'),
+              _connectionHint(t, 'Tailscale',  'http://100.95.213.57:8000'),
               _connectionHint(t, 'Device', 'http://<LAN-IP>:8000'),
             ],
           ),
@@ -431,10 +543,10 @@ class _UploadScreenState extends State<UploadScreen>
         style: const TextStyle(
             fontSize: 11, fontFamily: 'monospace', height: 1.8),
         children: [
-          TextSpan(text: '$label  ',
-              style: TextStyle(color: t.textMuted)),
-          TextSpan(text: value,
-              style: TextStyle(color: t.textSecondary)),
+          TextSpan(
+              text: '$label  ', style: TextStyle(color: t.textMuted)),
+          TextSpan(
+              text: value, style: TextStyle(color: t.textSecondary)),
         ],
       ),
     );
