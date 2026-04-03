@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'theme/app_theme.dart';
+import 'theme/theme_notifier.dart';
 import 'models/session_model.dart';
 import 'screens/upload_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -8,12 +10,12 @@ import 'screens/settings_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: AppTheme.bgDeep,
-  ));
-  runApp(const MeetingIntelligenceHubApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeNotifier(),
+      child: const MeetingIntelligenceHubApp(),
+    ),
+  );
 }
 
 class MeetingIntelligenceHubApp extends StatelessWidget {
@@ -21,11 +23,25 @@ class MeetingIntelligenceHubApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Meeting Intelligence Hub',
-      theme: AppTheme.theme,
-      debugShowCheckedModeBanner: false,
-      home: const _AppShell(),
+    final notifier = context.watch<ThemeNotifier>();
+
+    // Keep system UI in sync with the active theme's background colour
+    final bgColor = notifier.tokens.bgDeep;
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: bgColor,
+    ));
+
+    return AppTheme(
+      mode: notifier.mode,
+      tokens: notifier.tokens,
+      child: MaterialApp(
+        title: 'Meeting Intelligence Hub',
+        theme: notifier.themeData,
+        debugShowCheckedModeBanner: false,
+        home: const _AppShell(),
+      ),
     );
   }
 }

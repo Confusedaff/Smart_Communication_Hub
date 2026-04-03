@@ -60,27 +60,24 @@ class _ChatTabState extends State<ChatTab> {
   }
 
   Future<void> _clearHistory() async {
+    final t = AppTheme.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: AppTheme.bgCard,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16)),
-        title: const Text('Clear conversation?',
-            style: TextStyle(
-                color: AppTheme.textPrimary, fontSize: 16)),
-        content: const Text(
+        backgroundColor: t.bgCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Clear conversation?',
+            style: TextStyle(color: t.textPrimary, fontSize: 16)),
+        content: Text(
             'This will remove all messages from this session.',
-            style: TextStyle(
-                color: AppTheme.textSecondary, fontSize: 13)),
+            style: TextStyle(color: t.textSecondary, fontSize: 13)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
               child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.accentRed),
+            style: ElevatedButton.styleFrom(backgroundColor: t.accentRed),
             child: const Text('Clear'),
           ),
         ],
@@ -108,8 +105,7 @@ class _ChatTabState extends State<ChatTab> {
     _scrollToBottom();
 
     try {
-      final response =
-          await ApiService.sendMessage(widget.sessionId, question);
+      final response = await ApiService.sendMessage(widget.sessionId, question);
       if (mounted) {
         setState(() {
           _messages.add(ChatMessage(
@@ -165,13 +161,10 @@ class _ChatTabState extends State<ChatTab> {
               ? _buildEmptyState()
               : ListView.builder(
                   controller: _scrollController,
-                  padding:
-                      const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   itemCount: _messages.length + (_isSending ? 1 : 0),
                   itemBuilder: (_, i) {
-                    if (i == _messages.length) {
-                      return _buildTypingIndicator();
-                    }
+                    if (i == _messages.length) return _buildTypingIndicator();
                     return _buildMessageBubble(_messages[i]);
                   },
                 ),
@@ -182,32 +175,26 @@ class _ChatTabState extends State<ChatTab> {
   }
 
   Widget _buildClearBar() {
+    final t = AppTheme.of(context);
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      decoration: const BoxDecoration(
-        border:
-            Border(bottom: BorderSide(color: AppTheme.border)),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: t.border)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text('${_messages.length ~/ 2} exchanges',
-              style: const TextStyle(
-                  color: AppTheme.textMuted, fontSize: 11)),
+              style: TextStyle(color: t.textMuted, fontSize: 11)),
           TextButton.icon(
             onPressed: _clearHistory,
-            icon: const Icon(Icons.delete_outline,
-                size: 13, color: AppTheme.textMuted),
-            label: const Text('Clear',
-                style: TextStyle(
-                    color: AppTheme.textMuted, fontSize: 12)),
+            icon: Icon(Icons.delete_outline, size: 13, color: t.textMuted),
+            label: Text('Clear',
+                style: TextStyle(color: t.textMuted, fontSize: 12)),
             style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 minimumSize: Size.zero,
-                tapTargetSize:
-                    MaterialTapTargetSize.shrinkWrap),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap),
           ),
         ],
       ),
@@ -215,6 +202,7 @@ class _ChatTabState extends State<ChatTab> {
   }
 
   Widget _buildEmptyState() {
+    final t = AppTheme.of(context);
     const suggestions = [
       ('What decisions were made?', Icons.check_circle_outline),
       ('What action items were assigned?', Icons.task_alt_outlined),
@@ -228,26 +216,23 @@ class _ChatTabState extends State<ChatTab> {
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: AppTheme.accentGlow,
+              color: t.accentGlow,
               shape: BoxShape.circle,
-              border: Border.all(color: AppTheme.borderGlow),
+              border: Border.all(color: t.borderGlow),
             ),
-            child: const Icon(Icons.chat_bubble_outline,
-                size: 32, color: AppTheme.accent),
+            child: Icon(Icons.chat_bubble_outline, size: 32, color: t.accent),
           ),
           const SizedBox(height: 20),
-          const Text('Ask about this meeting',
+          Text('Ask about this meeting',
               style: TextStyle(
-                  color: AppTheme.textPrimary,
+                  color: t.textPrimary,
                   fontWeight: FontWeight.w700,
                   fontSize: 18)),
           const SizedBox(height: 8),
-          const Text(
+          Text(
               'Responses include citations with speaker, timestamp, and excerpt.',
               style: TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 13,
-                  height: 1.5),
+                  color: t.textSecondary, fontSize: 13, height: 1.5),
               textAlign: TextAlign.center),
           const SizedBox(height: 28),
           ...suggestions.map(((String text, IconData icon) s) => Padding(
@@ -261,23 +246,21 @@ class _ChatTabState extends State<ChatTab> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: AppTheme.bgElevated,
+                      color: t.bgElevated,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.border),
+                      border: Border.all(color: t.border),
                     ),
                     child: Row(
                       children: [
                         Icon(s.$2,
-                            size: 16,
-                            color: AppTheme.accent.withOpacity(0.7)),
+                            size: 16, color: t.accent.withOpacity(0.7)),
                         const SizedBox(width: 12),
                         Text(s.$1,
-                            style: const TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 13)),
+                            style: TextStyle(
+                                color: t.textSecondary, fontSize: 13)),
                         const Spacer(),
-                        const Icon(Icons.arrow_forward_rounded,
-                            size: 14, color: AppTheme.textMuted),
+                        Icon(Icons.arrow_forward_rounded,
+                            size: 14, color: t.textMuted),
                       ],
                     ),
                   ),
@@ -289,6 +272,7 @@ class _ChatTabState extends State<ChatTab> {
   }
 
   Widget _buildMessageBubble(ChatMessage msg) {
+    final t = AppTheme.of(context);
     final isUser = msg.role == 'user';
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -302,44 +286,36 @@ class _ChatTabState extends State<ChatTab> {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppTheme.accentGlow, AppTheme.bgElevated],
+                gradient: LinearGradient(
+                  colors: [t.accentGlow, t.bgElevated],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 shape: BoxShape.circle,
-                border: Border.all(color: AppTheme.borderGlow),
+                border: Border.all(color: t.borderGlow),
               ),
-              child: const Icon(Icons.hub_rounded,
-                  size: 15, color: AppTheme.accent),
+              child: Icon(Icons.hub_rounded, size: 15, color: t.accent),
             ),
             const SizedBox(width: 10),
           ],
           Flexible(
             child: Column(
-              crossAxisAlignment: isUser
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: isUser
-                        ? AppTheme.accentGlow
-                        : AppTheme.bgCard,
+                    color: isUser ? t.accentGlow : t.bgCard,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(16),
                       topRight: const Radius.circular(16),
-                      bottomLeft:
-                          Radius.circular(isUser ? 16 : 4),
-                      bottomRight:
-                          Radius.circular(isUser ? 4 : 16),
+                      bottomLeft: Radius.circular(isUser ? 16 : 4),
+                      bottomRight: Radius.circular(isUser ? 4 : 16),
                     ),
                     border: Border.all(
-                        color: isUser
-                            ? AppTheme.borderGlow
-                            : AppTheme.border),
+                        color: isUser ? t.borderGlow : t.border),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -347,20 +323,15 @@ class _ChatTabState extends State<ChatTab> {
                     children: [
                       Text(
                         msg.content,
-                        style: const TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontSize: 14,
-                            height: 1.55),
+                        style: TextStyle(
+                            color: t.textPrimary, fontSize: 14, height: 1.55),
                       ),
-                      // Timing label sits directly below the text, inside
-                      // the bubble — eliminates the large gap that appeared
-                      // when it was rendered outside as a sibling widget.
                       if (!isUser && msg.timing != null) ...[
                         const SizedBox(height: 8),
                         Text(
                           '${msg.timing!.elapsedSeconds.toStringAsFixed(1)}s · ${msg.timing!.backend}',
                           style: TextStyle(
-                              color: AppTheme.textMuted.withOpacity(0.7),
+                              color: t.textMuted.withOpacity(0.7),
                               fontSize: 11),
                         ),
                       ],
@@ -369,7 +340,7 @@ class _ChatTabState extends State<ChatTab> {
                 ),
                 if (!isUser && msg.citations.isNotEmpty) ...[
                   const SizedBox(height: 6),
-                  ...msg.citations.map((c) => _buildCitation(c)),
+                  ...msg.citations.map((c) => _buildCitation(c, t)),
                 ],
               ],
             ),
@@ -379,7 +350,7 @@ class _ChatTabState extends State<ChatTab> {
     );
   }
 
-  Widget _buildCitation(Citation c) {
+  Widget _buildCitation(Citation c, AppThemeTokens t) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: Stack(
@@ -388,54 +359,52 @@ class _ChatTabState extends State<ChatTab> {
             margin: const EdgeInsets.only(bottom: 6),
             padding: const EdgeInsets.fromLTRB(13, 11, 11, 11),
             decoration: BoxDecoration(
-              color: AppTheme.bgDeep,
+              color: t.bgDeep,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.border),
+              border: Border.all(color: t.border),
             ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.person_outline,
-                  size: 11, color: AppTheme.textMuted),
-              const SizedBox(width: 4),
-              Text(c.speaker,
-                  style: const TextStyle(
-                      color: AppTheme.accentLight,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600)),
-              const Spacer(),
-              if (c.timestamp.isNotEmpty) ...[
-                const Icon(Icons.access_time_outlined,
-                    size: 11, color: AppTheme.textMuted),
-                const SizedBox(width: 3),
-                Text(c.timestamp,
-                    style: const TextStyle(
-                        color: AppTheme.textMuted, fontSize: 11)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.person_outline, size: 11, color: t.textMuted),
+                    const SizedBox(width: 4),
+                    Text(c.speaker,
+                        style: TextStyle(
+                            color: t.accentLight,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    if (c.timestamp.isNotEmpty) ...[
+                      Icon(Icons.access_time_outlined,
+                          size: 11, color: t.textMuted),
+                      const SizedBox(width: 3),
+                      Text(c.timestamp,
+                          style:
+                              TextStyle(color: t.textMuted, fontSize: 11)),
+                    ],
+                  ],
+                ),
+                if (c.excerpt.isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    '"${c.excerpt}"',
+                    style: TextStyle(
+                        color: t.textSecondary,
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                        height: 1.4),
+                  ),
+                ],
               ],
-            ],
-          ),
-          if (c.excerpt.isNotEmpty) ...[
-            const SizedBox(height: 5),
-            Text(
-              '"${c.excerpt}"',
-              style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                  height: 1.4),
             ),
-          ],
-        ],
-      ),
           ),
-          // Colored left accent bar
           Positioned(
             left: 0,
             top: 0,
-            bottom: 6, // matches margin bottom of the container
-            child: Container(width: 2, color: AppTheme.accent),
+            bottom: 6,
+            child: Container(width: 2, color: t.accent),
           ),
         ],
       ),
@@ -443,6 +412,7 @@ class _ChatTabState extends State<ChatTab> {
   }
 
   Widget _buildTypingIndicator() {
+    final t = AppTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -451,30 +421,29 @@ class _ChatTabState extends State<ChatTab> {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppTheme.accentGlow, AppTheme.bgElevated],
+              gradient: LinearGradient(
+                colors: [t.accentGlow, t.bgElevated],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               shape: BoxShape.circle,
-              border: Border.all(color: AppTheme.borderGlow),
+              border: Border.all(color: t.borderGlow),
             ),
-            child: const Icon(Icons.hub_rounded,
-                size: 15, color: AppTheme.accent),
+            child: Icon(Icons.hub_rounded, size: 15, color: t.accent),
           ),
           const SizedBox(width: 10),
           Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 14),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: AppTheme.bgCard,
+              color: t.bgCard,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16),
                 topRight: Radius.circular(16),
                 bottomRight: Radius.circular(16),
                 bottomLeft: Radius.circular(4),
               ),
-              border: Border.all(color: AppTheme.border),
+              border: Border.all(color: t.border),
             ),
             child: const _TypingDots(),
           ),
@@ -484,11 +453,12 @@ class _ChatTabState extends State<ChatTab> {
   }
 
   Widget _buildInputBar() {
+    final t = AppTheme.of(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-      decoration: const BoxDecoration(
-        color: AppTheme.bgCard,
-        border: Border(top: BorderSide(color: AppTheme.border)),
+      decoration: BoxDecoration(
+        color: t.bgCard,
+        border: Border(top: BorderSide(color: t.border)),
       ),
       child: Row(
         children: [
@@ -500,8 +470,8 @@ class _ChatTabState extends State<ChatTab> {
               decoration: const InputDecoration(
                 hintText: 'Ask about the meeting…',
                 isDense: true,
-                contentPadding: EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 12),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
               textInputAction: TextInputAction.send,
               maxLines: 4,
@@ -514,16 +484,15 @@ class _ChatTabState extends State<ChatTab> {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: AppTheme.accentGlow,
+                    color: t.accentGlow,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Center(
+                  child: Center(
                     child: SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: AppTheme.accent),
+                          strokeWidth: 2.5, color: t.accent),
                     ),
                   ),
                 )
@@ -534,11 +503,11 @@ class _ChatTabState extends State<ChatTab> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: AppTheme.accent,
+                      color: t.accent,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.send_rounded,
-                        color: Colors.white, size: 20),
+                    child: Icon(Icons.send_rounded,
+                        color: t.onAccent, size: 20),
                   ),
                 ),
         ],
@@ -562,8 +531,7 @@ class _TypingDotsState extends State<_TypingDots>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 1400))
+        vsync: this, duration: const Duration(milliseconds: 1400))
       ..repeat();
   }
 
@@ -575,6 +543,7 @@ class _TypingDotsState extends State<_TypingDots>
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, __) {
@@ -582,8 +551,8 @@ class _TypingDotsState extends State<_TypingDots>
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (i) {
             final offset = i * 0.28;
-            final t = ((_ctrl.value - offset) % 1.0).clamp(0.0, 1.0);
-            final opacity = t < 0.5 ? t * 2 : (1 - t) * 2;
+            final v = ((_ctrl.value - offset) % 1.0).clamp(0.0, 1.0);
+            final opacity = v < 0.5 ? v * 2 : (1 - v) * 2;
             final scale = 0.7 + opacity * 0.3;
             return Transform.scale(
               scale: scale,
@@ -592,8 +561,7 @@ class _TypingDotsState extends State<_TypingDots>
                 height: 7,
                 margin: const EdgeInsets.symmetric(horizontal: 2.5),
                 decoration: BoxDecoration(
-                  color: AppTheme.accent
-                      .withOpacity(0.3 + opacity * 0.7),
+                  color: t.accent.withOpacity(0.3 + opacity * 0.7),
                   shape: BoxShape.circle,
                 ),
               ),

@@ -21,7 +21,6 @@ class _ExtractionTabState extends State<ExtractionTab> {
   ExtractionModel? _extraction;
   bool _isLoading = false;
   String? _error;
-  // Store raw JSON for debugging if text fields are empty
   Map<String, dynamic>? _rawJson;
 
   @override
@@ -33,9 +32,7 @@ class _ExtractionTabState extends State<ExtractionTab> {
   @override
   void didUpdateWidget(ExtractionTab old) {
     super.didUpdateWidget(old);
-    if (widget.engine != old.engine) {
-      _runExtraction();
-    }
+    if (widget.engine != old.engine) _runExtraction();
   }
 
   Future<void> _runExtraction() async {
@@ -47,8 +44,7 @@ class _ExtractionTabState extends State<ExtractionTab> {
     });
     try {
       final result = await ApiService.extractWithRaw(
-          widget.sessionId,
-          engine: widget.engine);
+          widget.sessionId, engine: widget.engine);
       if (mounted) {
         setState(() {
           _extraction = result.$1;
@@ -73,6 +69,7 @@ class _ExtractionTabState extends State<ExtractionTab> {
   }
 
   Widget _buildLoading() {
+    final t = AppTheme.of(context);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -81,21 +78,21 @@ class _ExtractionTabState extends State<ExtractionTab> {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: AppTheme.accentGlow,
+              color: t.accentGlow,
               shape: BoxShape.circle,
-              border: Border.all(color: AppTheme.borderGlow),
+              border: Border.all(color: t.borderGlow),
             ),
-            child: const Padding(
-              padding: EdgeInsets.all(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
               child: CircularProgressIndicator(
-                  color: AppTheme.accent, strokeWidth: 2.5),
+                  color: t.accent, strokeWidth: 2.5),
             ),
           ),
           const SizedBox(height: 20),
-          const Text(
+          Text(
             'Running extraction…',
             style: TextStyle(
-                color: AppTheme.textPrimary,
+                color: t.textPrimary,
                 fontWeight: FontWeight.w600,
                 fontSize: 15),
           ),
@@ -104,8 +101,7 @@ class _ExtractionTabState extends State<ExtractionTab> {
             widget.engine == 'llm'
                 ? 'This may take up to 90s with Ollama.'
                 : 'Running NLP pipeline…',
-            style: const TextStyle(
-                color: AppTheme.textMuted, fontSize: 13),
+            style: TextStyle(color: t.textMuted, fontSize: 13),
           ),
         ],
       ),
@@ -113,6 +109,7 @@ class _ExtractionTabState extends State<ExtractionTab> {
   }
 
   Widget _buildError() {
+    final t = AppTheme.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -123,22 +120,20 @@ class _ExtractionTabState extends State<ExtractionTab> {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: AppTheme.accentRed.withOpacity(0.1),
+                color: t.accentRed.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.error_outline,
-                  color: AppTheme.accentRed, size: 32),
+              child: Icon(Icons.error_outline, color: t.accentRed, size: 32),
             ),
             const SizedBox(height: 20),
-            const Text('Extraction failed',
+            Text('Extraction failed',
                 style: TextStyle(
-                    color: AppTheme.textPrimary,
+                    color: t.textPrimary,
                     fontWeight: FontWeight.w600,
                     fontSize: 16)),
             const SizedBox(height: 8),
             Text(_error!,
-                style: const TextStyle(
-                    color: AppTheme.textSecondary, fontSize: 13),
+                style: TextStyle(color: t.textSecondary, fontSize: 13),
                 textAlign: TextAlign.center),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -153,46 +148,43 @@ class _ExtractionTabState extends State<ExtractionTab> {
   }
 
   Widget _buildResults() {
+    final t = AppTheme.of(context);
     final ex = _extraction!;
     return RefreshIndicator(
       onRefresh: _runExtraction,
-      color: AppTheme.accent,
+      color: t.accent,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildStatsRow(ex),
+            _buildStatsRow(ex, t),
             const SizedBox(height: 20),
             if (ex.summary.isNotEmpty) ...[
-              _buildSummaryCard(ex.summary),
+              _buildSummaryCard(ex.summary, t),
               const SizedBox(height: 20),
             ],
             _buildSection(
               title: 'Decisions',
               count: ex.decisions.length,
-              color: AppTheme.accent,
+              color: t.accent,
               children: ex.decisions.isEmpty
-                  ? [_emptyState('No decisions found')]
-                  : ex.decisions
-                      .map((d) => _decisionCard(d))
-                      .toList(),
+                  ? [_emptyState('No decisions found', t)]
+                  : ex.decisions.map((d) => _decisionCard(d, t)).toList(),
             ),
             const SizedBox(height: 20),
             _buildSection(
               title: 'Action Items',
               count: ex.actionItems.length,
-              color: AppTheme.accentGreen,
+              color: t.accentGreen,
               children: ex.actionItems.isEmpty
-                  ? [_emptyState('No action items found')]
-                  : ex.actionItems
-                      .map((a) => _actionCard(a))
-                      .toList(),
+                  ? [_emptyState('No action items found', t)]
+                  : ex.actionItems.map((a) => _actionCard(a, t)).toList(),
             ),
             if (ex.timing != null) ...[
               const SizedBox(height: 16),
-              _buildTimingCard(ex.timing!),
+              _buildTimingCard(ex.timing!, t),
             ],
             const SizedBox(height: 8),
             Center(
@@ -200,8 +192,7 @@ class _ExtractionTabState extends State<ExtractionTab> {
                 onPressed: _runExtraction,
                 icon: const Icon(Icons.refresh_rounded, size: 15),
                 label: const Text('Re-extract'),
-                style: TextButton.styleFrom(
-                    foregroundColor: AppTheme.textMuted),
+                style: TextButton.styleFrom(foregroundColor: t.textMuted),
               ),
             ),
           ],
@@ -210,26 +201,26 @@ class _ExtractionTabState extends State<ExtractionTab> {
     );
   }
 
-  Widget _buildStatsRow(ExtractionModel ex) {
+  Widget _buildStatsRow(ExtractionModel ex, AppThemeTokens t) {
     return Row(
       children: [
         _statChip('${ex.decisions.length}', 'Decisions',
-            AppTheme.accent, Icons.check_circle_outline),
+            t.accent, Icons.check_circle_outline, t),
         const SizedBox(width: 10),
         _statChip('${ex.actionItems.length}', 'Actions',
-            AppTheme.accentGreen, Icons.task_alt_outlined),
+            t.accentGreen, Icons.task_alt_outlined, t),
         const SizedBox(width: 10),
         _statChip('${ex.uniqueOwners}', 'Owners',
-            AppTheme.accentPurple, Icons.person_outline),
+            t.accentPurple, Icons.person_outline, t),
         const SizedBox(width: 10),
         _statChip('${ex.itemsWithDeadlines}', 'Deadlines',
-            AppTheme.accentAmber, Icons.schedule_outlined),
+            t.accentAmber, Icons.schedule_outlined, t),
       ],
     );
   }
 
   Widget _statChip(
-      String value, String label, Color color, IconData icon) {
+      String value, String label, Color color, IconData icon, AppThemeTokens t) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -250,39 +241,36 @@ class _ExtractionTabState extends State<ExtractionTab> {
                     height: 1)),
             const SizedBox(height: 4),
             Text(label,
-                style: const TextStyle(
-                    color: AppTheme.textMuted,
-                    fontSize: 10,
-                    letterSpacing: 0.3)),
+                style: TextStyle(
+                    color: t.textMuted, fontSize: 10, letterSpacing: 0.3)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSummaryCard(String summary) {
+  Widget _buildSummaryCard(String summary, AppThemeTokens t) {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppTheme.accentGlow, AppTheme.bgCard],
+          colors: [t.accentGlow, t.bgCard],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.borderGlow),
+        border: Border.all(color: t.borderGlow),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.auto_awesome_outlined,
-                  size: 15, color: AppTheme.accent),
-              SizedBox(width: 8),
+              Icon(Icons.auto_awesome_outlined, size: 15, color: t.accent),
+              const SizedBox(width: 8),
               Text('Executive Summary',
                   style: TextStyle(
-                      color: AppTheme.accent,
+                      color: t.accent,
                       fontWeight: FontWeight.w700,
                       fontSize: 12,
                       letterSpacing: 0.5)),
@@ -290,10 +278,8 @@ class _ExtractionTabState extends State<ExtractionTab> {
           ),
           const SizedBox(height: 12),
           Text(summary,
-              style: const TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 14,
-                  height: 1.7)),
+              style: TextStyle(
+                  color: t.textPrimary, fontSize: 14, height: 1.7)),
         ],
       ),
     );
@@ -317,8 +303,7 @@ class _ExtractionTabState extends State<ExtractionTab> {
                     fontSize: 15)),
             const SizedBox(width: 8),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(10),
@@ -337,18 +322,16 @@ class _ExtractionTabState extends State<ExtractionTab> {
     );
   }
 
-  Widget _emptyState(String msg) {
+  Widget _emptyState(String msg, AppThemeTokens t) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Text(msg,
-          style: const TextStyle(
-              color: AppTheme.textMuted,
-              fontStyle: FontStyle.italic)),
+          style: TextStyle(
+              color: t.textMuted, fontStyle: FontStyle.italic)),
     );
   }
 
-  Widget _decisionCard(DecisionItem d) {
-    // Fallback: if decision text is empty, show placeholder
+  Widget _decisionCard(DecisionItem d, AppThemeTokens t) {
     final displayText = d.decision.isNotEmpty
         ? d.decision
         : '(No decision text — check API field names)';
@@ -357,9 +340,9 @@ class _ExtractionTabState extends State<ExtractionTab> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.bgCard,
+        color: t.bgCard,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: t.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -372,14 +355,13 @@ class _ExtractionTabState extends State<ExtractionTab> {
                 height: 28,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: AppTheme.accent.withOpacity(0.12),
+                  color: t.accent.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: AppTheme.accent.withOpacity(0.25)),
+                  border: Border.all(color: t.accent.withOpacity(0.25)),
                 ),
                 child: Text('${d.id}',
-                    style: const TextStyle(
-                        color: AppTheme.accent,
+                    style: TextStyle(
+                        color: t.accent,
                         fontSize: 11,
                         fontWeight: FontWeight.w800)),
               ),
@@ -388,9 +370,7 @@ class _ExtractionTabState extends State<ExtractionTab> {
                 child: Text(
                   displayText,
                   style: TextStyle(
-                    color: d.decision.isNotEmpty
-                        ? AppTheme.textPrimary
-                        : AppTheme.accentAmber,
+                    color: d.decision.isNotEmpty ? t.textPrimary : t.accentAmber,
                     fontWeight: FontWeight.w500,
                     fontSize: 14,
                     height: 1.55,
@@ -404,21 +384,20 @@ class _ExtractionTabState extends State<ExtractionTab> {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: AppTheme.bgElevated,
+                    color: t.bgElevated,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.person_outline,
-                          size: 11, color: AppTheme.textMuted),
+                      Icon(Icons.person_outline, size: 11, color: t.textMuted),
                       const SizedBox(width: 4),
                       Text(d.madeBy,
-                          style: const TextStyle(
-                              color: AppTheme.textSecondary,
+                          style: TextStyle(
+                              color: t.textSecondary,
                               fontSize: 11,
                               fontWeight: FontWeight.w500)),
                     ],
@@ -432,14 +411,14 @@ class _ExtractionTabState extends State<ExtractionTab> {
             Container(
               padding: const EdgeInsets.all(11),
               decoration: BoxDecoration(
-                color: AppTheme.bgDeep,
+                color: t.bgDeep,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.border),
+                border: Border.all(color: t.border),
               ),
               child: Text(
                 '"${d.evidence}"',
-                style: const TextStyle(
-                    color: AppTheme.textMuted,
+                style: TextStyle(
+                    color: t.textMuted,
                     fontSize: 12,
                     fontStyle: FontStyle.italic,
                     height: 1.5),
@@ -451,7 +430,7 @@ class _ExtractionTabState extends State<ExtractionTab> {
     );
   }
 
-  Widget _actionCard(ActionItem a) {
+  Widget _actionCard(ActionItem a, AppThemeTokens t) {
     final displayText = a.task.isNotEmpty
         ? a.task
         : '(No task text — check API field names)';
@@ -460,9 +439,9 @@ class _ExtractionTabState extends State<ExtractionTab> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.bgCard,
+        color: t.bgCard,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: t.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -475,14 +454,14 @@ class _ExtractionTabState extends State<ExtractionTab> {
                 height: 28,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: AppTheme.accentGreen.withOpacity(0.12),
+                  color: t.accentGreen.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: AppTheme.accentGreen.withOpacity(0.25)),
+                  border:
+                      Border.all(color: t.accentGreen.withOpacity(0.25)),
                 ),
                 child: Text('${a.id}',
-                    style: const TextStyle(
-                        color: AppTheme.accentGreen,
+                    style: TextStyle(
+                        color: t.accentGreen,
                         fontSize: 11,
                         fontWeight: FontWeight.w800)),
               ),
@@ -491,9 +470,7 @@ class _ExtractionTabState extends State<ExtractionTab> {
                 child: Text(
                   displayText,
                   style: TextStyle(
-                    color: a.task.isNotEmpty
-                        ? AppTheme.textPrimary
-                        : AppTheme.accentAmber,
+                    color: a.task.isNotEmpty ? t.textPrimary : t.accentAmber,
                     fontWeight: FontWeight.w500,
                     fontSize: 14,
                     height: 1.55,
@@ -511,18 +488,18 @@ class _ExtractionTabState extends State<ExtractionTab> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: AppTheme.bgElevated,
+                      color: t.bgElevated,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.person_outline,
-                            size: 11, color: AppTheme.textMuted),
+                        Icon(Icons.person_outline,
+                            size: 11, color: t.textMuted),
                         const SizedBox(width: 4),
                         Text(a.owner,
-                            style: const TextStyle(
-                                color: AppTheme.textSecondary,
+                            style: TextStyle(
+                                color: t.textSecondary,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w500)),
                       ],
@@ -535,21 +512,20 @@ class _ExtractionTabState extends State<ExtractionTab> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: AppTheme.accentAmber.withOpacity(0.08),
+                      color: t.accentAmber.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                          color: AppTheme.accentAmber.withOpacity(0.2)),
+                          color: t.accentAmber.withOpacity(0.2)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.schedule_outlined,
-                            size: 11,
-                            color: AppTheme.accentAmber),
+                        Icon(Icons.schedule_outlined,
+                            size: 11, color: t.accentAmber),
                         const SizedBox(width: 4),
                         Text(a.deadline,
-                            style: const TextStyle(
-                                color: AppTheme.accentAmber,
+                            style: TextStyle(
+                                color: t.accentAmber,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w500)),
                       ],
@@ -563,14 +539,14 @@ class _ExtractionTabState extends State<ExtractionTab> {
             Container(
               padding: const EdgeInsets.all(11),
               decoration: BoxDecoration(
-                color: AppTheme.bgDeep,
+                color: t.bgDeep,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.border),
+                border: Border.all(color: t.border),
               ),
               child: Text(
                 '"${a.evidence}"',
-                style: const TextStyle(
-                    color: AppTheme.textMuted,
+                style: TextStyle(
+                    color: t.textMuted,
                     fontSize: 12,
                     fontStyle: FontStyle.italic,
                     height: 1.5),
@@ -582,25 +558,22 @@ class _ExtractionTabState extends State<ExtractionTab> {
     );
   }
 
-  Widget _buildTimingCard(ExtractionTiming timing) {
+  Widget _buildTimingCard(ExtractionTiming timing, AppThemeTokens t) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       decoration: BoxDecoration(
-        color: AppTheme.bgElevated,
+        color: t.bgElevated,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: t.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.timer_outlined,
-              size: 13, color: AppTheme.textMuted),
+          Icon(Icons.timer_outlined, size: 13, color: t.textMuted),
           const SizedBox(width: 6),
           Text(
             '${timing.elapsedSeconds.toStringAsFixed(1)}s via ${timing.backend} (${timing.engine})',
-            style: const TextStyle(
-                color: AppTheme.textMuted, fontSize: 12),
+            style: TextStyle(color: t.textMuted, fontSize: 12),
           ),
         ],
       ),

@@ -33,8 +33,7 @@ class _UploadScreenState extends State<UploadScreen>
     _pulseController = AnimationController(
         vsync: this, duration: const Duration(seconds: 2))
       ..repeat(reverse: true);
-    _pulseAnim =
-        Tween<double>(begin: 0.97, end: 1.0).animate(CurvedAnimation(
+    _pulseAnim = Tween<double>(begin: 0.97, end: 1.0).animate(CurvedAnimation(
       parent: _pulseController,
       curve: Curves.easeInOut,
     ));
@@ -81,8 +80,7 @@ class _UploadScreenState extends State<UploadScreen>
 
     final ext = path.split('.').last.toLowerCase();
     if (ext != 'txt' && ext != 'vtt') {
-      setState(
-          () => _errorMessage = 'Only .txt and .vtt files are supported.');
+      setState(() => _errorMessage = 'Only .txt and .vtt files are supported.');
       return;
     }
 
@@ -124,9 +122,7 @@ class _UploadScreenState extends State<UploadScreen>
     _checkHealth();
     FocusScope.of(context).unfocus();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content:
-              Text('Backend URL updated to ${ApiService.baseUrl}')),
+      SnackBar(content: Text('Backend URL updated to ${ApiService.baseUrl}')),
     );
   }
 
@@ -154,6 +150,7 @@ class _UploadScreenState extends State<UploadScreen>
   }
 
   Widget _buildHeader() {
+    final t = AppTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -164,61 +161,59 @@ class _UploadScreenState extends State<UploadScreen>
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    AppTheme.accent.withOpacity(0.3),
-                    AppTheme.accentPurple.withOpacity(0.2),
+                    t.accent.withOpacity(0.3),
+                    t.accentPurple.withOpacity(0.2),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                    color: AppTheme.accent.withOpacity(0.3), width: 1),
+                    color: t.accent.withOpacity(0.3), width: 1),
               ),
-              child: const Icon(Icons.hub_rounded,
-                  color: AppTheme.accent, size: 26),
+              child: Icon(Icons.hub_rounded, color: t.accent, size: 26),
             ),
             const SizedBox(width: 14),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 RichText(
-                  text: const TextSpan(
+                  text: TextSpan(
                     style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
-                        color: AppTheme.textPrimary,
+                        color: t.textPrimary,
                         letterSpacing: -0.5),
                     children: [
-                      TextSpan(text: 'Meeting '),
+                      const TextSpan(text: 'Meeting '),
                       TextSpan(
                           text: 'Intelligence',
-                          style: TextStyle(color: AppTheme.accent)),
+                          style: TextStyle(color: t.accent)),
                     ],
                   ),
                 ),
-                const Text('Hub',
+                Text('Hub',
                     style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
-                        color: AppTheme.textPrimary,
+                        color: t.textPrimary,
                         letterSpacing: -0.5)),
               ],
             ),
           ],
         ),
         const SizedBox(height: 14),
-        const Text(
+        Text(
           'Upload a meeting transcript to extract decisions, action items, and chat with your meeting data.',
           style: TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 14,
-              height: 1.6),
+              color: t.textSecondary, fontSize: 14, height: 1.6),
         ),
       ],
     );
   }
 
   Widget _buildUploadCard() {
+    final t = AppTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -234,22 +229,14 @@ class _UploadScreenState extends State<UploadScreen>
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: _isUploading
-                        ? [
-                            AppTheme.accentGlow,
-                            AppTheme.bgElevated,
-                          ]
-                        : [
-                            AppTheme.bgElevated,
-                            AppTheme.bgCard,
-                          ],
+                        ? [t.accentGlow, t.bgElevated]
+                        : [t.bgElevated, t.bgCard],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: _isUploading
-                        ? AppTheme.borderGlow
-                        : AppTheme.borderBright,
+                    color: _isUploading ? t.borderGlow : t.borderBright,
                     width: _isUploading ? 1.5 : 1,
                   ),
                 ),
@@ -257,19 +244,19 @@ class _UploadScreenState extends State<UploadScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (_isUploading)
-                      const CircularProgressIndicator(
-                          color: AppTheme.accent, strokeWidth: 2.5)
+                      CircularProgressIndicator(
+                          color: t.accent, strokeWidth: 2.5)
                     else
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: AppTheme.accent.withOpacity(0.1),
+                          color: t.accent.withOpacity(0.1),
                           shape: BoxShape.circle,
                           border: Border.all(
-                              color: AppTheme.accent.withOpacity(0.2)),
+                              color: t.accent.withOpacity(0.2)),
                         ),
-                        child: const Icon(Icons.upload_file_rounded,
-                            size: 36, color: AppTheme.accent),
+                        child: Icon(Icons.upload_file_rounded,
+                            size: 36, color: t.accent),
                       ),
                     const SizedBox(height: 18),
                     Text(
@@ -277,17 +264,15 @@ class _UploadScreenState extends State<UploadScreen>
                           ? (_uploadStatus ?? 'Uploading…')
                           : 'Tap to select a transcript',
                       style: TextStyle(
-                          color: _isUploading
-                              ? AppTheme.accentLight
-                              : AppTheme.textPrimary,
+                          color: _isUploading ? t.accentLight : t.textPrimary,
                           fontSize: 16,
                           fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 6),
                     if (!_isUploading)
-                      const Text('.txt  ·  .vtt',
+                      Text('.txt  ·  .vtt',
                           style: TextStyle(
-                              color: AppTheme.textMuted,
+                              color: t.textMuted,
                               fontSize: 12,
                               letterSpacing: 1)),
                   ],
@@ -301,20 +286,18 @@ class _UploadScreenState extends State<UploadScreen>
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: AppTheme.accentRed.withOpacity(0.08),
+              color: t.accentRed.withOpacity(0.08),
               borderRadius: BorderRadius.circular(12),
-              border:
-                  Border.all(color: AppTheme.accentRed.withOpacity(0.25)),
+              border: Border.all(color: t.accentRed.withOpacity(0.25)),
             ),
             child: Row(
               children: [
-                const Icon(Icons.error_outline,
-                    color: AppTheme.accentRed, size: 18),
+                Icon(Icons.error_outline, color: t.accentRed, size: 18),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(_errorMessage!,
-                      style: const TextStyle(
-                          color: AppTheme.accentRed, fontSize: 13,height: 1.4)),
+                      style: TextStyle(
+                          color: t.accentRed, fontSize: 13, height: 1.4)),
                 ),
               ],
             ),
@@ -336,15 +319,15 @@ class _UploadScreenState extends State<UploadScreen>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.warning_amber_rounded,
-                      size: 14, color: AppTheme.accentAmber),
+                  Icon(Icons.warning_amber_rounded,
+                      size: 14, color: t.accentAmber),
                   const SizedBox(width: 6),
                   Text(
                     'Backend must be online to upload',
                     style: Theme.of(context)
                         .textTheme
                         .bodyMedium
-                        ?.copyWith(color: AppTheme.accentAmber, fontSize: 12),
+                        ?.copyWith(color: t.accentAmber, fontSize: 12),
                   ),
                 ],
               ),
@@ -355,12 +338,13 @@ class _UploadScreenState extends State<UploadScreen>
   }
 
   Widget _buildBackendCard() {
+    final t = AppTheme.of(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.bgCard,
+        color: t.bgCard,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: t.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -368,32 +352,30 @@ class _UploadScreenState extends State<UploadScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Backend Server',
+              Text('Backend Server',
                   style: TextStyle(
-                      color: AppTheme.textPrimary,
+                      color: t.textPrimary,
                       fontWeight: FontWeight.w600,
                       fontSize: 14)),
               Row(
                 children: [
                   if (_isCheckingHealth)
-                    const SizedBox(
+                    SizedBox(
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppTheme.accent),
+                          strokeWidth: 2, color: t.accent),
                     )
                   else
                     StatusBadge(
                       label: _backendOnline ? 'Online' : 'Offline',
-                      color: _backendOnline
-                          ? AppTheme.accentGreen
-                          : AppTheme.accentRed,
+                      color: _backendOnline ? t.accentGreen : t.accentRed,
                     ),
                   const SizedBox(width: 8),
                   GestureDetector(
                     onTap: _checkHealth,
-                    child: const Icon(Icons.refresh_rounded,
-                        size: 18, color: AppTheme.textMuted),
+                    child: Icon(Icons.refresh_rounded,
+                        size: 18, color: t.textMuted),
                   ),
                 ],
               ),
@@ -405,13 +387,13 @@ class _UploadScreenState extends State<UploadScreen>
               Expanded(
                 child: TextField(
                   controller: _urlController,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 13,
-                      color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(
+                      color: t.textPrimary),
+                  decoration: InputDecoration(
                     labelText: 'Backend URL',
-                    labelStyle: TextStyle(color: AppTheme.textMuted),
+                    labelStyle: TextStyle(color: t.textMuted),
                     hintText: 'http://10.0.2.2:8000',
                     isDense: true,
                   ),
@@ -433,9 +415,9 @@ class _UploadScreenState extends State<UploadScreen>
             spacing: 16,
             runSpacing: 4,
             children: [
-              _connectionHint('Emulator', 'http://10.0.2.2:8000'),
-              _connectionHint('iOS Sim', 'http://localhost:8000'),
-              _connectionHint('Device', 'http://<LAN-IP>:8000'),
+              _connectionHint(t, 'Emulator', 'http://10.0.2.2:8000'),
+              _connectionHint(t, 'iOS Sim', 'http://localhost:8000'),
+              _connectionHint(t, 'Device', 'http://<LAN-IP>:8000'),
             ],
           ),
         ],
@@ -443,18 +425,16 @@ class _UploadScreenState extends State<UploadScreen>
     );
   }
 
-  Widget _connectionHint(String label, String value) {
+  Widget _connectionHint(AppThemeTokens t, String label, String value) {
     return RichText(
       text: TextSpan(
         style: const TextStyle(
             fontSize: 11, fontFamily: 'monospace', height: 1.8),
         children: [
-          TextSpan(
-              text: '$label  ',
-              style: const TextStyle(color: AppTheme.textMuted)),
-          TextSpan(
-              text: value,
-              style: const TextStyle(color: AppTheme.textSecondary)),
+          TextSpan(text: '$label  ',
+              style: TextStyle(color: t.textMuted)),
+          TextSpan(text: value,
+              style: TextStyle(color: t.textSecondary)),
         ],
       ),
     );

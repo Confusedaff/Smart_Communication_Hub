@@ -31,14 +31,13 @@ class _TranscriptTabState extends State<TranscriptTab> {
       _error = null;
     });
     try {
-      final data = await ApiService.getTranscript(widget.sessionId,
-          format: 'segments');
-      final segs =
-          List<Map<String, dynamic>>.from(data['segments'] ?? []);
+      final data =
+          await ApiService.getTranscript(widget.sessionId, format: 'segments');
+      final segs = List<Map<String, dynamic>>.from(data['segments'] ?? []);
       final spks = List<String>.from(data['speakers'] ?? []);
 
-      final plainData = await ApiService.getTranscript(widget.sessionId,
-          format: 'plain');
+      final plainData =
+          await ApiService.getTranscript(widget.sessionId, format: 'plain');
       final plain = plainData['text'] as String? ?? '';
 
       if (mounted) {
@@ -59,9 +58,10 @@ class _TranscriptTabState extends State<TranscriptTab> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     if (_isLoading) {
-      return const Center(
-          child: CircularProgressIndicator(color: AppTheme.accent));
+      return Center(
+          child: CircularProgressIndicator(color: t.accent));
     }
     if (_error != null) {
       return Center(
@@ -74,16 +74,16 @@ class _TranscriptTabState extends State<TranscriptTab> {
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: AppTheme.accentRed.withOpacity(0.1),
+                  color: t.accentRed.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.error_outline,
-                    color: AppTheme.accentRed, size: 30),
+                child: Icon(Icons.error_outline,
+                    color: t.accentRed, size: 30),
               ),
               const SizedBox(height: 16),
               Text(_error!,
-                  style: const TextStyle(
-                      color: AppTheme.textSecondary, fontSize: 13),
+                  style: TextStyle(
+                      color: t.textSecondary, fontSize: 13),
                   textAlign: TextAlign.center),
               const SizedBox(height: 20),
               ElevatedButton.icon(
@@ -99,31 +99,27 @@ class _TranscriptTabState extends State<TranscriptTab> {
 
     return Column(
       children: [
-        _buildHeader(),
-        if (_speakers.isNotEmpty && !_showPlainText)
-          _buildSpeakerLegend(),
+        _buildHeader(t),
+        if (_speakers.isNotEmpty && !_showPlainText) _buildSpeakerLegend(t),
         Expanded(
-          child: _showPlainText ? _buildPlainText() : _buildSegments(),
+          child: _showPlainText ? _buildPlainText(t) : _buildSegments(t),
         ),
       ],
     );
   }
 
-  // ── Top bar ────────────────────────────────────────────────────────────────
-
-  Widget _buildHeader() {
+  Widget _buildHeader(AppThemeTokens t) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppTheme.border))),
+      decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: t.border))),
       child: Row(
         children: [
-          const Icon(Icons.insert_drive_file_outlined,
-              size: 13, color: AppTheme.textMuted),
+          Icon(Icons.insert_drive_file_outlined,
+              size: 13, color: t.textMuted),
           const SizedBox(width: 5),
           Text('${_segments.length} segments',
-              style: const TextStyle(
-                  color: AppTheme.textMuted, fontSize: 12)),
+              style: TextStyle(color: t.textMuted, fontSize: 12)),
           const Spacer(),
           SegmentedButton<bool>(
             selected: {_showPlainText},
@@ -134,14 +130,13 @@ class _TranscriptTabState extends State<TranscriptTab> {
               ButtonSegment(value: true, label: Text('Plain text')),
             ],
             style: SegmentedButton.styleFrom(
-              backgroundColor: AppTheme.bgElevated,
-              selectedBackgroundColor:
-                  AppTheme.accent.withOpacity(0.15),
-              foregroundColor: AppTheme.textSecondary,
-              selectedForegroundColor: AppTheme.accent,
-              textStyle: const TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w500),
-              side: const BorderSide(color: AppTheme.border),
+              backgroundColor: t.bgElevated,
+              selectedBackgroundColor: t.accent.withOpacity(0.15),
+              foregroundColor: t.textSecondary,
+              selectedForegroundColor: t.accent,
+              textStyle:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+              side: BorderSide(color: t.border),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
             ),
@@ -151,21 +146,19 @@ class _TranscriptTabState extends State<TranscriptTab> {
     );
   }
 
-  // ── Speaker legend (scrollable pill row) ───────────────────────────────────
-
-  Widget _buildSpeakerLegend() {
+  Widget _buildSpeakerLegend(AppThemeTokens t) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-      decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppTheme.border))),
+      decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: t.border))),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Wrap(
           spacing: 10,
           runSpacing: 6,
           children: _speakers.asMap().entries.map((e) {
-            final color = AppTheme.speakerColor(e.key);
+            final color = t.speakerColor(e.key);
             return Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -191,27 +184,24 @@ class _TranscriptTabState extends State<TranscriptTab> {
     );
   }
 
-  // ── Segment list ───────────────────────────────────────────────────────────
-
-  Widget _buildSegments() {
+  Widget _buildSegments(AppThemeTokens t) {
     if (_segments.isEmpty) {
-      return const Center(
+      return Center(
         child: Text('No segments found',
             style: TextStyle(
-                color: AppTheme.textMuted,
+                color: t.textMuted,
                 fontSize: 13,
                 fontStyle: FontStyle.italic)),
       );
     }
-
     return ListView.builder(
       padding: EdgeInsets.zero,
       itemCount: _segments.length,
-      itemBuilder: (_, i) => _buildSegmentRow(_segments[i]),
+      itemBuilder: (_, i) => _buildSegmentRow(_segments[i], t),
     );
   }
 
-  Widget _buildSegmentRow(Map<String, dynamic> seg) {
+  Widget _buildSegmentRow(Map<String, dynamic> seg, AppThemeTokens t) {
     final speaker = (seg['speaker'] ??
             seg['Speaker'] ??
             seg['name'] ??
@@ -225,9 +215,8 @@ class _TranscriptTabState extends State<TranscriptTab> {
             '') as String;
 
     final speakerIdx = _speakers.indexOf(speaker);
-    final color = speakerIdx >= 0
-        ? AppTheme.speakerColor(speakerIdx)
-        : AppTheme.textMuted;
+    final color =
+        speakerIdx >= 0 ? t.speakerColor(speakerIdx) : t.textMuted;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -237,12 +226,10 @@ class _TranscriptTabState extends State<TranscriptTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Speaker pill — transparent background, colored border + text
-              // exactly matching screenshot 2
               if (speaker.isNotEmpty) ...[
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: color, width: 1.5),
@@ -258,13 +245,10 @@ class _TranscriptTabState extends State<TranscriptTab> {
                 ),
                 const SizedBox(height: 10),
               ],
-              // Transcript text
               Text(
                 text.isNotEmpty ? text : '(empty)',
                 style: TextStyle(
-                  color: text.isNotEmpty
-                      ? AppTheme.textPrimary
-                      : AppTheme.textMuted,
+                  color: text.isNotEmpty ? t.textPrimary : t.textMuted,
                   fontSize: 15,
                   height: 1.55,
                   fontStyle: text.isNotEmpty
@@ -275,20 +259,18 @@ class _TranscriptTabState extends State<TranscriptTab> {
             ],
           ),
         ),
-        Container(height: 1, color: AppTheme.border),
+        Container(height: 1, color: t.border),
       ],
     );
   }
 
-  // ── Plain text ─────────────────────────────────────────────────────────────
-
-  Widget _buildPlainText() {
+  Widget _buildPlainText(AppThemeTokens t) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: SelectableText(
         _plainText,
-        style: const TextStyle(
-            color: AppTheme.textPrimary, fontSize: 14, height: 1.75),
+        style:
+            TextStyle(color: t.textPrimary, fontSize: 14, height: 1.75),
       ),
     );
   }

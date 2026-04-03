@@ -61,8 +61,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showError(String msg) {
+    final t = AppTheme.of(context);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: AppTheme.accentRed),
+      SnackBar(content: Text(msg), backgroundColor: t.accentRed),
     );
   }
 
@@ -75,9 +76,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showExportSheet() {
+    final t = AppTheme.of(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppTheme.bgCard,
+      backgroundColor: t.bgCard,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => Padding(
@@ -85,7 +87,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _sheetHandle(),
+            _sheetHandle(t),
             const SizedBox(height: 20),
             Text('Export Report', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 6),
@@ -93,8 +95,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 24),
             _exportTile(
+              t: t,
               icon: Icons.table_chart_outlined,
-              iconColor: AppTheme.accentGreen,
+              iconColor: t.accentGreen,
               label: 'Export as CSV',
               subtitle: 'Spreadsheet with decisions & actions',
               onTap: () {
@@ -104,8 +107,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(height: 12),
             _exportTile(
+              t: t,
               icon: Icons.picture_as_pdf_outlined,
-              iconColor: AppTheme.accentRed,
+              iconColor: t.accentRed,
               label: 'Export as PDF',
               subtitle: 'Formatted report document',
               onTap: () {
@@ -119,13 +123,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _sheetHandle() {
+  Widget _sheetHandle(AppThemeTokens t) {
     return Center(
       child: Container(
         width: 36,
         height: 4,
         decoration: BoxDecoration(
-          color: AppTheme.borderBright,
+          color: t.borderBright,
           borderRadius: BorderRadius.circular(2),
         ),
       ),
@@ -133,6 +137,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _exportTile({
+    required AppThemeTokens t,
     required IconData icon,
     required Color iconColor,
     required String label,
@@ -140,7 +145,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required VoidCallback onTap,
   }) {
     return Material(
-      color: AppTheme.bgElevated,
+      color: t.bgElevated,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -149,7 +154,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppTheme.border),
+            border: Border.all(color: t.border),
           ),
           child: Row(
             children: [
@@ -168,19 +173,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(label,
-                        style: const TextStyle(
-                            color: AppTheme.textPrimary,
+                        style: TextStyle(
+                            color: t.textPrimary,
                             fontWeight: FontWeight.w600,
                             fontSize: 14)),
                     const SizedBox(height: 2),
                     Text(subtitle,
-                        style: const TextStyle(
-                            color: AppTheme.textSecondary, fontSize: 12)),
+                        style: TextStyle(color: t.textSecondary, fontSize: 12)),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right,
-                  color: AppTheme.textMuted, size: 20),
+              Icon(Icons.chevron_right, color: t.textMuted, size: 20),
             ],
           ),
         ),
@@ -189,9 +192,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showSessionInfo() {
+    final t = AppTheme.of(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppTheme.bgCard,
+      backgroundColor: t.bgCard,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => Padding(
@@ -200,21 +204,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(child: _sheetHandle()),
+            Center(child: _sheetHandle(t)),
             const SizedBox(height: 20),
             Text('Session Details',
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 20),
-            _infoRow(Icons.fingerprint, 'Session ID',
-                widget.session.sessionId),
-            _infoRow(Icons.insert_drive_file_outlined, 'File',
-                widget.session.filename),
-            _infoRow(Icons.segment, 'Segments',
-                '${widget.session.segmentCount}'),
-            _infoRow(Icons.text_fields, 'Characters',
-                '${widget.session.charCount}'),
-            _infoRow(Icons.people_outline, 'Speakers',
-                widget.session.speakers.join(', ')),
+            _infoRow(t, Icons.fingerprint, 'Session ID', widget.session.sessionId),
+            _infoRow(t, Icons.insert_drive_file_outlined, 'File', widget.session.filename),
+            _infoRow(t, Icons.segment, 'Segments', '${widget.session.segmentCount}'),
+            _infoRow(t, Icons.text_fields, 'Characters', '${widget.session.charCount}'),
+            _infoRow(t, Icons.people_outline, 'Speakers', widget.session.speakers.join(', ')),
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
@@ -229,24 +228,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _infoRow(IconData icon, String label, String value) {
+  Widget _infoRow(AppThemeTokens t, IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 9),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 15, color: AppTheme.textMuted),
+          Icon(icon, size: 15, color: t.textMuted),
           const SizedBox(width: 12),
           SizedBox(
             width: 88,
             child: Text(label,
-                style: const TextStyle(
-                    color: AppTheme.textMuted, fontSize: 13)),
+                style: TextStyle(color: t.textMuted, fontSize: 13)),
           ),
           Expanded(
             child: Text(value,
-                style: const TextStyle(
-                    color: AppTheme.textPrimary,
+                style: TextStyle(
+                    color: t.textPrimary,
                     fontSize: 13,
                     fontFamily: 'monospace')),
           ),
@@ -262,8 +260,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          ExtractionTab(
-              sessionId: widget.session.sessionId, engine: _engine),
+          ExtractionTab(sessionId: widget.session.sessionId, engine: _engine),
           ChatTab(sessionId: widget.session.sessionId),
           TranscriptTab(sessionId: widget.session.sessionId),
         ],
@@ -273,6 +270,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   PreferredSizeWidget _buildAppBar() {
+    final t = AppTheme.of(context);
     return AppBar(
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -282,9 +280,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           Text(
             widget.session.filename,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
-              color: AppTheme.textSecondary,
+              color: t.textSecondary,
               fontFamily: 'monospace',
               fontWeight: FontWeight.w400,
             ),
@@ -299,13 +297,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         const SizedBox(width: 4),
         _isExporting
-            ? const Padding(
-                padding: EdgeInsets.all(12),
+            ? Padding(
+                padding: const EdgeInsets.all(12),
                 child: SizedBox(
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: AppTheme.accent),
+                      strokeWidth: 2, color: t.accent),
                 ),
               )
             : IconButton(
@@ -322,15 +320,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ],
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
-        child: Container(height: 1, color: AppTheme.border),
+        child: Container(height: 1, color: t.border),
       ),
     );
   }
 
   Widget _buildBottomNav() {
+    final t = AppTheme.of(context);
     return Container(
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: AppTheme.border, width: 1)),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: t.border, width: 1)),
       ),
       child: NavigationBar(
         selectedIndex: _selectedIndex,
@@ -370,6 +369,7 @@ class _EngineToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final isLlm = value == 'llm';
     return GestureDetector(
       onTap: () => onChanged(isLlm ? 'nlp' : 'llm'),
@@ -378,14 +378,10 @@ class _EngineToggle extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 10),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: isLlm
-              ? AppTheme.accentGlow
-              : AppTheme.accentGreen.withOpacity(0.12),
+          color: isLlm ? t.accentGlow : t.accentGreen.withOpacity(0.12),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isLlm
-                ? AppTheme.borderGlow
-                : AppTheme.accentGreen.withOpacity(0.4),
+            color: isLlm ? t.borderGlow : t.accentGreen.withOpacity(0.4),
           ),
         ),
         child: Row(
@@ -394,13 +390,13 @@ class _EngineToggle extends StatelessWidget {
             Icon(
               isLlm ? Icons.psychology_outlined : Icons.memory_outlined,
               size: 13,
-              color: isLlm ? AppTheme.accentLight : AppTheme.accentGreen,
+              color: isLlm ? t.accentLight : t.accentGreen,
             ),
             const SizedBox(width: 5),
             Text(
               isLlm ? 'LLM' : 'NLP',
               style: TextStyle(
-                color: isLlm ? AppTheme.accentLight : AppTheme.accentGreen,
+                color: isLlm ? t.accentLight : t.accentGreen,
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.5,
