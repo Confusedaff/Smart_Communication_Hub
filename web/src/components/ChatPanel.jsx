@@ -1,17 +1,46 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { api } from "../services/api";
+import LLMTimingBadge from "./LLMTimingBadge";
+
+const STORAGE_KEY = (id) => `mih_chat_${id}`;
+
+const WELCOME = {
+  role: "assistant",
+  content: "Ask me anything about this transcript — who said what, what was decided, or any action items.",
+  citations: [],
+};
+
+function loadMessages(sessionId) {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY(sessionId));
+    if (raw) return JSON.parse(raw);
+  } catch (_) { /* ignore */ }
+  return [WELCOME];
+}
+
+function saveMessages(sessionId, messages) {
+  try {
+    localStorage.setItem(STORAGE_KEY(sessionId), JSON.stringify(messages));
+  } catch (_) { /* ignore */ }
+}
 
 export default function ChatPanel({ sessionId }) {
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      content: "Ask me anything about this transcript — who said what, what was decided, or any action items.",
-      citations: [],
-    },
-  ]);
-  const [input, setInput]   = useState("");
-  const [loading, setLoading] = useState(false);
+  const [messages, setMessages] = useState(() => loadMessages(sessionId));
+  const [input,    setInput]    = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [lastTiming, setLastTiming] = useState(null);  // {elapsed_seconds, backend}
   const bottomRef = useRef();
+
+  /* Persist messages whenever they change */
+  useEffect(() => {
+    saveMessages(sessionId, messages);
+  }, [sessionId, messages]);
+
+  /* Re-load if sessionId switches (different transcript opened) */
+  useEffect(() => {
+    setMessages(loadMessages(sessionId));
+    setLastTiming(null);
+  }, [sessionId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -25,9 +54,10 @@ export default function ChatPanel({ sessionId }) {
     setLoading(true);
     try {
       const data = await api.chat(sessionId, q);
+      setLastTiming(data.timing || null);
       setMessages((m) => [
         ...m,
-        { role: "assistant", content: data.answer, citations: data.citations || [] },
+        { role: "assistant", content: data.answer, citations: data.citations || [], timing: data.timing },
       ]);
     } catch (e) {
       setMessages((m) => [
@@ -40,26 +70,29 @@ export default function ChatPanel({ sessionId }) {
   };
 
   const handleKey = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
   const clearHistory = async () => {
     await api.clearHistory(sessionId);
+    localStorage.removeItem(STORAGE_KEY(sessionId));
     setMessages([{
       role: "assistant",
       content: "History cleared. Ask me anything about the transcript.",
       citations: [],
     }]);
+    setLastTiming(null);
   };
 
   return (
     <div className="chat-panel">
       <div className="chat-topbar">
         <span className="chat-title">💬 Transcript Q&amp;A</span>
-        <button className="clear-btn" onClick={clearHistory}>Clear history</button>
+        <div className="chat-topbar-right">
+          {/* Live timing badge — shows expected wait for next query */}
+          <LLMTimingBadge task="chat" />
+          <button className="clear-btn" onClick={clearHistory}>Clear history</button>
+        </div>
       </div>
 
       <div className="chat-messages">
@@ -70,12 +103,20 @@ export default function ChatPanel({ sessionId }) {
             </div>
             <div className="message-body">
               <p className="message-text">{msg.content}</p>
+
+              {/* Per-message timing (shown on assistant messages that have it) */}
+              {msg.timing?.elapsed_seconds != null && (
+                <span className="message-timing">
+                  {msg.timing.elapsed_seconds}s · {msg.timing.backend}
+                </span>
+              )}
+
               {msg.citations?.length > 0 && (
                 <div className="citations">
                   <span className="citations-label">Sources</span>
                   {msg.citations.map((c, ci) => (
                     <div className="citation" key={ci}>
-                      {c.speaker && <span className="citation-speaker">{c.speaker}</span>}
+                      {c.speaker  && <span className="citation-speaker">{c.speaker}</span>}
                       {c.timestamp && <span className="citation-ts">{c.timestamp}</span>}
                       <span className="citation-excerpt">"{c.excerpt}"</span>
                     </div>
@@ -90,9 +131,7 @@ export default function ChatPanel({ sessionId }) {
           <div className="message assistant">
             <div className="message-avatar">AI</div>
             <div className="message-body">
-              <div className="typing-dots">
-                <span /><span /><span />
-              </div>
+              <div className="typing-dots"><span /><span /><span /></div>
             </div>
           </div>
         )}
@@ -117,7 +156,7 @@ export default function ChatPanel({ sessionId }) {
           ↑
         </button>
       </div>
-      <p className="chat-hint">Press Enter to send · Shift+Enter for newline</p>
+      <p className="chat-hint">Press Enter to send · Shift+Enter for newline · history saved in browser</p>
     </div>
   );
 }

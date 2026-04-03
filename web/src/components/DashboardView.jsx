@@ -3,24 +3,23 @@ import { api } from "../services/api";
 import ExtractionPanel from "./ExtractionPanel";
 import ChatPanel from "./ChatPanel";
 import TranscriptPanel from "./TranscriptPanel";
+import LLMTimingBadge from "./LLMTimingBadge";
 
 const TABS = [
-  { id: "extract", label: "Extraction", icon: "⚡" },
-  { id: "chat",    label: "Chatbot",    icon: "💬" },
+  { id: "extract",    label: "Extraction", icon: "⚡" },
+  { id: "chat",       label: "Chatbot",    icon: "💬" },
   { id: "transcript", label: "Transcript", icon: "📄" },
 ];
 
 export default function DashboardView({ session, onNewUpload }) {
-  const [tab, setTab]               = useState("extract");
-  const [extraction, setExtraction] = useState(null);
-  const [extracting, setExtracting] = useState(false);
+  const [tab,          setTab]          = useState("extract");
+  const [extraction,   setExtraction]   = useState(null);
+  const [extracting,   setExtracting]   = useState(false);
   const [extractError, setExtractError] = useState(null);
-  const [engine, setEngine]         = useState("nlp");
+  const [engine,       setEngine]       = useState("nlp");
 
   // Auto-run extraction on mount
-  useEffect(() => {
-    runExtraction();
-  }, [session.session_id]);
+  useEffect(() => { runExtraction(); }, [session.session_id]);
 
   const runExtraction = async (force = false) => {
     setExtracting(true);
@@ -35,10 +34,13 @@ export default function DashboardView({ session, onNewUpload }) {
     }
   };
 
+  /* Task for timing badge: show "extract" while extraction running, else "chat" */
+  const timingTask = extracting ? "extract" : tab === "chat" ? "chat" : "extract";
+
   return (
-    <div className="dashboard">
-      {/* Sidebar */}
-      <aside className="sidebar">
+    <div className="dashboard" style={{ maxWidth: "1600px", width: "100%" }}>
+      {/* ── Sidebar ── */}
+      <aside className="sidebar" style={{ width: "280px", minWidth: "260px" }}>
         <div className="sidebar-logo">
           <span className="logo-mark sm">MIH</span>
         </div>
@@ -95,22 +97,26 @@ export default function DashboardView({ session, onNewUpload }) {
           </button>
         </div>
 
+        {/* ── LLM Timing — collapsible dropdown in sidebar ── */}
+        <div className="sidebar-timing">
+          <details className="timing-dropdown">
+            <summary className="timing-dropdown-summary">
+              ⏱ Response times
+            </summary>
+            <div className="timing-dropdown-body">
+              <LLMTimingBadge task={timingTask} inline={true} />
+            </div>
+          </details>
+        </div>
+
         {/* Export buttons */}
         {extraction && (
           <div className="export-section">
             <label className="engine-label">Export</label>
-            <a
-              className="export-btn"
-              href={api.exportCsvUrl(session.session_id)}
-              download
-            >
+            <a className="export-btn" href={api.exportCsvUrl(session.session_id)} download>
               ⬇ CSV
             </a>
-            <a
-              className="export-btn"
-              href={api.exportPdfUrl(session.session_id)}
-              download
-            >
+            <a className="export-btn" href={api.exportPdfUrl(session.session_id)} download>
               ⬇ PDF Report
             </a>
           </div>
@@ -121,8 +127,8 @@ export default function DashboardView({ session, onNewUpload }) {
         </button>
       </aside>
 
-      {/* Main content */}
-      <main className="dashboard-main">
+      {/* ── Main content ── */}
+      <main className="dashboard-main" style={{ flex: 1, minWidth: 0 }}>
         {/* Top bar */}
         <div className="top-bar">
           <div className="tab-bar">
@@ -136,8 +142,22 @@ export default function DashboardView({ session, onNewUpload }) {
               </button>
             ))}
           </div>
-          <div className="engine-badge">
-            {engine === "nlp" ? "🧠 spaCy NLP" : "🤖 Ollama LLM"}
+
+          {/* Right side of top-bar: engine badge + collapsible timing */}
+          <div className="top-bar-right">
+            <div className="engine-badge">
+              {engine === "nlp" ? "🧠 spaCy NLP" : "🤖 Ollama LLM"}
+            </div>
+
+            {/* Collapsible timing dropdown in top bar */}
+            <details className="timing-dropdown timing-dropdown--topbar">
+              <summary className="timing-dropdown-summary">
+                ⏱ Times
+              </summary>
+              <div className="timing-dropdown-body timing-dropdown-body--topbar">
+                <LLMTimingBadge task={timingTask} />
+              </div>
+            </details>
           </div>
         </div>
 

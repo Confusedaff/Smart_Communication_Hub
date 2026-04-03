@@ -103,6 +103,16 @@ async def get_timing(task: str = Query("chat", description="'chat' or 'extract'"
     return ollama_client.get_expected_duration(task)
 
 
+@app.get("/timing/status", tags=["Health"])
+async def get_timing_status(task: str = Query("chat", description="'chat' or 'extract'")):
+    """
+    Returns timing estimates for BOTH Groq and Ollama simultaneously.
+    Includes active backend, availability, model names, estimated seconds,
+    and recent call history. Polled by the frontend timing widget.
+    """
+    return ollama_client.get_all_timing_info(task)
+
+
 # ── Sessions ──────────────────────────────────────────────────────────────────
 
 @app.get("/sessions", tags=["Sessions"])

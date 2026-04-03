@@ -36,7 +36,7 @@ DEFAULT_MODEL   = os.getenv("OLLAMA_MODEL", "gemma2:9b")
 TIMEOUT         = float(os.getenv("OLLAMA_TIMEOUT", "600"))
 
 GROQ_API_KEY    = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL      = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_MODEL      = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 GROQ_BASE_URL   = "https://api.groq.com/openai/v1"
 
 
@@ -61,7 +61,7 @@ def _record_timing(duration: float) -> None:
 
 
 def get_expected_duration(task: str = "chat") -> dict:
-    """Return expected duration info. Call this before firing a request."""
+    """Return expected duration info for the active backend."""
     backend = _active_backend()
     static  = _TIMING_ESTIMATES.get(backend, {}).get(task, 30)
 
@@ -81,6 +81,55 @@ def get_expected_duration(task: str = "chat") -> dict:
             if backend == "groq" else
             "Add GROQ_API_KEY to your .env file for much faster responses (free at console.groq.com)."
         ),
+    }
+
+
+def get_all_timing_info(task: str = "chat") -> dict:
+    """
+    Return timing estimates for BOTH Groq and Ollama simultaneously.
+    Used by the /timing/status endpoint to power the frontend timing widget.
+    """
+    active = _active_backend()
+    groq_available = bool(GROQ_API_KEY)
+
+    if _timing_history:
+        active_estimated = round(sum(_timing_history) / len(_timing_history), 1)
+        active_source    = "based on recent calls"
+    else:
+        active_estimated = _TIMING_ESTIMATES.get(active, {}).get(task, 30)
+        active_source    = "estimated"
+
+    groq_seconds   = active_estimated if active == "groq"   else _TIMING_ESTIMATES["groq"].get(task, 5)
+    ollama_seconds = active_estimated if active == "ollama" else _TIMING_ESTIMATES["ollama"].get(task, 60)
+    groq_source    = active_source    if active == "groq"   else "estimated"
+    ollama_source  = active_source    if active == "ollama" else "estimated"
+
+    return {
+        "active_backend": active,
+        "groq_available": groq_available,
+        "task": task,
+        "groq": {
+            "is_active":         active == "groq",
+            "available":         groq_available,
+            "model":             GROQ_MODEL,
+            "estimated_seconds": groq_seconds,
+            "source":            groq_source,
+            "label":             "Groq Cloud",
+            "tip": "Free at console.groq.com — add GROQ_API_KEY to .env to activate." if not groq_available else "",
+        },
+        "ollama": {
+            "is_active":         active == "ollama",
+            "available":         True,
+            "model":             DEFAULT_MODEL,
+            "estimated_seconds": ollama_seconds,
+            "source":            ollama_source,
+            "label":             "Ollama (local)",
+            "tip": "",
+        },
+        "timing_history": {
+            "recent_calls": len(_timing_history),
+            "avg_seconds":  round(sum(_timing_history) / len(_timing_history), 1) if _timing_history else None,
+        },
     }
 
 

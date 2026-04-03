@@ -29,6 +29,7 @@ except OSError:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 _DECISION_PATTERNS = [
+    # ── Formal decision language ──────────────────────────────────────────────
     r"\bwe('ve| have)? decided\b",
     r"\bit('s| is) decided\b",
     r"\bwe('re| are) going (with|to go with)\b",
@@ -46,13 +47,34 @@ _DECISION_PATTERNS = [
     r"\bselected\b",
     r"\bresolved (to|that)\b",
     r"\bmoved forward (with|on)\b",
+    # ── Conversational agreement / affirmation ────────────────────────────────
+    r"\bworks for me\b",
+    r"\bthat (makes|sounds) (sense|good|right|great)\b",
+    r"\bI suggest\b.{0,80}",
+    r"\b(yes|yeah|yep)[,.]?\s+(weekend|we will|we should|let'?s|going ahead|proceed)\b",
+    r"\bgood[,.]?\s+(ensure|make sure|let'?s)\b",
+    r"\blet'?s (proceed|go ahead|prioritize|finalize|adopt|use|focus on)\b",
+    r"\bwe('ll| will) (proceed|go ahead|prioritize|finalize|adopt|focus on)\b",
+    r"\b(agreed)[.!]?\s*$",
+    r"\b(agreed)[.,]?\s*(add|include|improve|proceed|use|prioritize|finalize)\b",
+    r"\b(proceed|proceeding) with\b",
+    # ── Group/team directives — "we should X", "we need to X" ────────────────
+    # Key insight: "we should" = group decision; "I'll" = individual action
+    r"\bwe (should|need to|must|have to) (improve|fix|finalize|update|optimize|plan|prioritize|add|include|review|use|proceed|focus|address|resolve)\b",
+    r"\b(the team|everyone) (should|needs? to|must)\b",
+    r"\b(needs?|need) (updating|fixing|improving|finalizing|optimizing|addressing|resolving)\b",
+    # ── Implicit decisions via "should improve/fix/update" framing ───────────
+    r"\bwe should (improve|fix|update|optimize|finalize|add|include|prioritize|address|resolve|plan|review)\b",
+    r"\b(should|must) (improve|fix|update|add|include|prioritize|finalize|optimize|address)\b.{0,50}\b(accessibility|performance|design|documentation|queries|response|bugs?|features?)\b",
+    # ── "Noted" / "How about X" agreement patterns ───────────────────────────
+    r"\b(noted)[.!]?\s*$",
+    r"\bhow about\b.{0,40}\?",  # proposal that typically gets agreed to
 ]
 
 _ACTION_PATTERNS = [
+    # ── Explicit personal commitment with deadline ────────────────────────────
     r"\bwill\b.{0,60}\b(by|before|until|due|deadline)\b",
-    r"\bneeds? to\b",
     r"\bhas to\b",
-    r"\bshould\b.{0,40}\b(send|prepare|review|update|create|write|schedule|set up|follow|reach out|check)\b",
     r"\bplease\b.{0,60}\b(send|prepare|review|update|create|write|schedule|set up|follow|reach out|check)\b",
     r"\byou('re| are) (responsible|in charge|owning)\b",
     r"\baction item\b",
@@ -61,25 +83,67 @@ _ACTION_PATTERNS = [
     r"\bown(ing)? this\b",
     r"\bassigned? (to|for)\b",
     r"\bfollow[ -]?up\b.{0,30}\b(on|with|about)\b",
-    r"\bI('ll| will) (send|prepare|review|update|create|write|schedule|reach out|check|handle|look into)\b",
-    r"\b(send|prepare|review|update|create|write|schedule|reach out|check|handle)\b.{0,40}\bby\b.{0,30}\b(monday|tuesday|wednesday|thursday|friday|eod|eow|next week|tomorrow|today)\b",
+    # I'll = individual personal commitment (action, not group decision)
+    r"\bI('ll| will) (send|prepare|compile|draft|update|create|write|schedule|reach out|check|handle|look into|notify|analyze|refactor|run|list|complete|start|work on)\b",
+    r"\b(send|prepare|review|update|create|write|schedule|reach out|check|handle|compile|draft)\b.{0,40}\bby\b.{0,30}\b(monday|tuesday|wednesday|thursday|friday|eod|eow|next week|tomorrow|today)\b",
     r"\bresponsible for\b",
     r"\bensure (that|the)\b",
     r"\bmake sure\b",
     r"\bdeadline\b",
     r"\bdue (by|on|date)\b",
+    # "should" only triggers action when paired with personal task verbs
+    r"\bshould\b.{0,40}\b(send|prepare|review|update|create|write|schedule|set up|follow|reach out|check)\b",
 ]
 
 _DECISION_RE = [re.compile(p, re.IGNORECASE) for p in _DECISION_PATTERNS]
 _ACTION_RE   = [re.compile(p, re.IGNORECASE) for p in _ACTION_PATTERNS]
 
+# Strong signals for each class — these override score ties
+_STRONG_ACTION = re.compile(
+    r"\bI('ll| will)\b.{0,80}\bby\b.{0,30}\b(monday|tuesday|wednesday|thursday|friday|eod|eow|next week|tomorrow|today)\b"
+    r"|\bI('ll| will) (send|compile|draft|notify|analyze|refactor|run|complete|start|work on)\b",
+    re.IGNORECASE,
+)
+_STRONG_DECISION = re.compile(
+    r"\bwe (should|need to|must) (improve|fix|finalize|update|optimize|plan|prioritize|address)\b"
+    r"|\b(needs?|need) (updating|fixing|improving|finalizing|optimizing)\b"
+    r"|\bI suggest\b"
+    r"|\bthat (makes|sounds) sense\b"
+    r"|\bworks for me\b"
+    r"|\b(noted)[.!]?\s*$",
+    re.IGNORECASE,
+)
+_DEADLINE_HINT = re.compile(
+    r"\bby\s+(tomorrow|friday|monday|tuesday|wednesday|thursday|eod|eow|next week|\d{1,2}[\/\-]\d{1,2})\b",
+    re.IGNORECASE,
+)
+
 
 def _classify_sentence(text: str) -> str:
     d_score = sum(1 for r in _DECISION_RE if r.search(text))
     a_score = sum(1 for r in _ACTION_RE   if r.search(text))
+
     if d_score == 0 and a_score == 0:
         return "GENERAL"
-    if d_score > a_score:
+
+    # Strong action signal: personal "I'll X by Y" always wins
+    if _STRONG_ACTION.search(text):
+        return "ACTION"
+
+    # Strong decision signal: group directive or affirmation always wins
+    if _STRONG_DECISION.search(text):
+        return "DECISION"
+
+    # Sentence has a deadline → lean action
+    if _DEADLINE_HINT.search(text) and a_score > 0:
+        return "ACTION"
+
+    # Short affirmative sentences lean decision
+    if len(text.split()) <= 10 and d_score > 0:
+        return "DECISION"
+
+    # Decisions win ties
+    if d_score >= a_score:
         return "DECISION"
     return "ACTION"
 

@@ -1,7 +1,8 @@
 """
 export.py — Generate CSV and PDF exports of extraction results.
 
-CSV: Two sheets worth of data in a single file (decisions then action items).
+CSV: Well-formatted single file with clear sections, column widths,
+     and proper quoting for all fields.
 PDF: Formatted report using ReportLab — fully offline, no external services.
 """
 
@@ -14,52 +15,101 @@ from datetime import datetime
 
 def to_csv(extraction: dict, filename: str = "transcript") -> bytes:
     """
-    Build a CSV file with two sections: Decisions and Action Items.
-    Returns raw bytes ready to stream as a file download.
+    Build a clean, well-formatted CSV.
+
+    Layout
+    ------
+    • Report header block   (title, source, export time)
+    • Executive Summary     (if present)
+    • DECISIONS section     (id, description, made_by, context)
+    • ACTION ITEMS section  (id, task, owner, deadline, context)
+
+    All text fields are fully quoted so multiline content survives
+    round-trips in Excel / LibreOffice.
     """
     output = io.StringIO()
-    writer = csv.writer(output)
 
-    meeting_date = datetime.utcnow().strftime("%Y-%m-%d")
+    # Use excel dialect (CRLF, double-quote escaping) for maximum compatibility
+    writer = csv.writer(
+        output,
+        dialect="excel",
+        quoting=csv.QUOTE_ALL,       # always quote → no ambiguity in Excel
+        lineterminator="\r\n",
+    )
 
-    # ── Header metadata
-    writer.writerow(["Meeting Intelligence Hub — Export"])
-    writer.writerow(["Source file", filename])
-    writer.writerow(["Exported at", datetime.utcnow().isoformat()])
-    writer.writerow([])
+    now = datetime.utcnow()
 
-    # ── Summary
-    if extraction.get("summary"):
-        writer.writerow(["SUMMARY"])
-        writer.writerow([extraction["summary"]])
+    # ── [A] Report header ──────────────────────────────────────────────────────
+    _hrow(writer, "MEETING INTELLIGENCE HUB — EXPORT REPORT")
+    writer.writerow(["Source file",  filename])
+    writer.writerow(["Exported at",  now.strftime("%Y-%m-%d %H:%M UTC")])
+    writer.writerow([])   # blank separator
+
+    # ── [B] Executive Summary ──────────────────────────────────────────────────
+    summary = (extraction.get("summary") or "").strip()
+    if summary:
+        _hrow(writer, "EXECUTIVE SUMMARY")
+        writer.writerow([summary])
         writer.writerow([])
 
-    # ── Decisions
-    writer.writerow(["DECISIONS"])
-    writer.writerow(["#", "Description", "Made By", "Context / Evidence"])
-    for d in extraction.get("decisions", []):
-        writer.writerow([
-            d.get("id", ""),
-            d.get("description", ""),
-            d.get("made_by") or "Unknown",
-            d.get("context", ""),
-        ])
+    # ── [C] Decisions ─────────────────────────────────────────────────────────
+    decisions = extraction.get("decisions", [])
+    _hrow(writer, f"DECISIONS  ({len(decisions)} total)")
+    writer.writerow(["#", "Description", "Made By", "Supporting Evidence"])
+
+    if decisions:
+        for d in decisions:
+            writer.writerow([
+                str(d.get("id", "")),
+                _clean(d.get("description", "")),
+                _clean(d.get("made_by") or "—"),
+                _clean(d.get("context", "")),
+            ])
+    else:
+        writer.writerow(["", "No decisions detected in this transcript.", "", ""])
+
+    writer.writerow([])  # blank separator
+
+    # ── [D] Action Items ──────────────────────────────────────────────────────
+    actions = extraction.get("action_items", [])
+    _hrow(writer, f"ACTION ITEMS  ({len(actions)} total)")
+    writer.writerow(["#", "Task", "Owner", "Deadline", "Supporting Evidence"])
+
+    if actions:
+        for a in actions:
+            writer.writerow([
+                str(a.get("id", "")),
+                _clean(a.get("what", "")),
+                _clean(a.get("who") or "Unassigned"),
+                _clean(a.get("by_when") or "Not specified"),
+                _clean(a.get("context", "")),
+            ])
+    else:
+        writer.writerow(["", "No action items detected in this transcript.", "", "", ""])
 
     writer.writerow([])
+    # ── [E] Counts summary row ────────────────────────────────────────────────
+    owners_set = {a.get("who") for a in actions if a.get("who")}
+    with_deadline = sum(1 for a in actions if a.get("by_when"))
+    _hrow(writer, "SUMMARY COUNTS")
+    writer.writerow(["Decisions",     len(decisions)])
+    writer.writerow(["Action Items",  len(actions)])
+    writer.writerow(["Unique Owners", len(owners_set)])
+    writer.writerow(["With Deadlines", with_deadline])
 
-    # ── Action Items
-    writer.writerow(["ACTION ITEMS"])
-    writer.writerow(["#", "Task", "Owner", "Deadline", "Context / Evidence"])
-    for a in extraction.get("action_items", []):
-        writer.writerow([
-            a.get("id", ""),
-            a.get("what", ""),
-            a.get("who") or "Unassigned",
-            a.get("by_when") or "Not specified",
-            a.get("context", ""),
-        ])
+    return output.getvalue().encode("utf-8-sig")   # UTF-8 BOM → Excel opens correctly
 
-    return output.getvalue().encode("utf-8")
+
+def _hrow(writer: csv.writer, label: str) -> None:
+    """Write a visually distinct section-header row."""
+    writer.writerow([f"=== {label} ==="])
+
+
+def _clean(text: str) -> str:
+    """Normalise whitespace; collapse internal newlines to a single space."""
+    if not text:
+        return ""
+    return " ".join(str(text).split())
 
 
 # ── PDF ───────────────────────────────────────────────────────────────────────
@@ -102,7 +152,6 @@ def to_pdf(extraction: dict, filename: str = "transcript") -> bytes:
     # Colour palette
     DARK_GREEN  = colors.HexColor("#1a7a4a")
     LIGHT_GREEN = colors.HexColor("#e8f5ee")
-    DARK_BG     = colors.HexColor("#1e1e1e")
     GREY        = colors.HexColor("#555555")
 
     # Custom styles
