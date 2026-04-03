@@ -8,6 +8,7 @@ A fully functional Flutter mobile app for the [Meeting Intelligence Hub](https:/
 
 | Upload Screen | Extraction Tab | Chat Tab | Transcript Tab |
 |---|---|---|---|
+| ![Upload](https://github.com/user-attachments/assets/0c6e3b0f-4f2e-452a-9ffc-3b9024d7672e) | ![Extract](https://github.com/user-attachments/assets/ff0ba850-a5ea-4898-be47-bf15542760d8) | ![Chat](https://github.com/user-attachments/assets/99f008fc-8f3c-4602-8204-96c06e927d3e) | ![Transcript](https://github.com/user-attachments/assets/db12e85d-9c80-41ae-8f39-3fd62a00642c) |
 | Upload `.txt`/`.vtt` files, configure backend URL | Decisions, action items, summary with stats | AI Q&A with citations and timing | Colour-coded speaker segments |
 
 ---
