@@ -6,7 +6,7 @@ A FastAPI backend that turns raw meeting transcripts (`.txt` / `.vtt`) into stru
 
 ---
 
-## UI Preview
+<!-- ## UI Preview
 
 > These screenshots are from the React web frontend — see [`web/README.md`](../web/README.md) for frontend setup.
 
@@ -19,7 +19,7 @@ A FastAPI backend that turns raw meeting transcripts (`.txt` / `.vtt`) into stru
 **Transcript panel** — colour-coded speaker segments with full speaker legend
 ![Transcript panel](https://github.com/user-attachments/assets/0a72e9ec-4f5a-4ce1-99af-b26563301e9f)
 
----
+--- -->
 
 ## Table of Contents
 
