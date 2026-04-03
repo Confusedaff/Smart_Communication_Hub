@@ -7,14 +7,18 @@ Run:
     python -m spacy download en_core_web_sm
     uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-Set extractor engine via env var:
-    EXTRACTOR=nlp     → uses custom_extractor.py (spaCy, no Ollama needed)
-    EXTRACTOR=llm     → uses extractor.py        (Ollama LLM, default)
+Extractor engine:
+    EXTRACTOR=nlp     → spaCy (no LLM needed)
+    EXTRACTOR=llm     → LLM (Ollama or Groq)
 
-Docs available at: http://localhost:8000/docs
+LLM backend (used for chat + LLM extraction):
+    OLLAMA_MODEL=gemma2:9b
+    GROQ_API_KEY=gsk_...        ← free at console.groq.com, much faster
+    LLM_BACKEND=auto            ← "auto" | "ollama" | "groq"
 """
 
 import os
+import logging
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -27,9 +31,10 @@ import chatbot
 import export
 import ollama_client
 
-# ── Choose extraction engine ──────────────────────────────────────────────────
-# Set env var EXTRACTOR=nlp to use the custom spaCy pipeline (no Ollama needed).
-# Default is "llm" (Ollama-based extractor).
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 _EXTRACTOR_MODE = os.getenv("EXTRACTOR", "llm").lower()
 
@@ -40,17 +45,10 @@ else:
     import extractor as _extractor
     _extractor_label = "Ollama LLM"
 
-
-# ── App setup ─────────────────────────────────────────────────────────────────
-
 app = FastAPI(
     title="Meeting Intelligence Hub",
-    description=(
-        "Transform raw meeting transcripts into structured intelligence. "
-        "Upload .TXT or .VTT files, extract decisions & action items, "
-        "and query the transcript via an AI chatbot — all 100% offline."
-    ),
-    version="1.0.0",
+    description="Transform raw meeting transcripts into structured intelligence.",
+    version="1.1.0",
 )
 
 app.add_middleware(
@@ -62,8 +60,6 @@ app.add_middleware(
 )
 
 
-# ── Request / Response models ─────────────────────────────────────────────────
-
 class ChatRequest(BaseModel):
     question: str
 
@@ -73,6 +69,7 @@ class ChatResponse(BaseModel):
     answer: str
     citations: list[dict]
     session_id: str
+    timing: dict | None = None
 
 
 # ── Health & status ───────────────────────────────────────────────────────────
@@ -81,24 +78,29 @@ class ChatResponse(BaseModel):
 async def root():
     return {
         "message":          "Meeting Intelligence Hub API is running",
-        "version":          "1.0.0",
+        "version":          "1.1.0",
         "extractor_engine": _extractor_label,
     }
 
 
 @app.get("/health", tags=["Health"])
 async def health():
-    """Check API health and Ollama connectivity (only relevant in LLM mode)."""
     result = {
         "api":              "ok",
         "extractor_engine": _extractor_label,
         "sessions_active":  len(sessions.list_sessions()),
     }
-    if _EXTRACTOR_MODE == "llm":
-        result["ollama"] = await ollama_client.health_check()
-    else:
-        result["ollama"] = "not required (NLP mode)"
+    result["llm"] = await ollama_client.health_check()
     return result
+
+
+@app.get("/timing", tags=["Health"])
+async def get_timing(task: str = Query("chat", description="'chat' or 'extract'")):
+    """
+    Returns expected LLM response time for the current backend.
+    Use this to show a loading estimate in the UI before firing a request.
+    """
+    return ollama_client.get_expected_duration(task)
 
 
 # ── Sessions ──────────────────────────────────────────────────────────────────
@@ -133,7 +135,6 @@ async def delete_session(session_id: str):
 
 @app.post("/upload", tags=["Transcript"], status_code=201)
 async def upload_transcript(file: UploadFile = File(...)):
-    """Upload a .TXT or .VTT transcript file. Returns a session_id."""
     filename = file.filename or "transcript"
     ext = filename.rsplit(".", 1)[-1].lower()
 
@@ -152,21 +153,26 @@ async def upload_transcript(file: UploadFile = File(...)):
     if not content.strip():
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    raw_text, segments = parser.parse(filename, content)
+    raw_text, segs = parser.parse(filename, content)
 
-    if not segments:
+    if not segs:
         raise HTTPException(status_code=422, detail="Could not parse any content from the file.")
 
-    session_id = sessions.create_session(filename, raw_text, segments)
+    session_id = sessions.create_session(filename, raw_text, segs)
+
+    # Pre-fetch timing estimate for the UI
+    extract_timing = ollama_client.get_expected_duration("extract")
 
     return {
-        "session_id":       session_id,
-        "filename":         filename,
-        "segment_count":    len(segments),
-        "speakers":         _unique_speakers(segments),
-        "char_count":       len(raw_text),
-        "extractor_engine": _extractor_label,
-        "message":          "Transcript uploaded. Call GET /sessions/{session_id}/extract to analyse.",
+        "session_id":          session_id,
+        "filename":            filename,
+        "segment_count":       len(segs),
+        "speakers":            _unique_speakers(segs),
+        "char_count":          len(raw_text),
+        "extractor_engine":    _extractor_label,
+        "expected_extract_seconds": extract_timing["estimated_seconds"],
+        "llm_backend":         extract_timing["backend"],
+        "message": "Transcript uploaded. Call GET /sessions/{session_id}/extract to analyse.",
     }
 
 
@@ -175,25 +181,21 @@ async def upload_transcript(file: UploadFile = File(...)):
 @app.get("/sessions/{session_id}/extract", tags=["Analysis"])
 async def extract_from_session(
     session_id: str,
-    force: bool = Query(False, description="Re-run extraction even if cached"),
-    engine: str = Query(None, description="Override engine for this request: 'nlp' or 'llm'"),
+    force: bool  = Query(False, description="Re-run extraction even if cached"),
+    engine: str  = Query(None,  description="Override engine: 'nlp' or 'llm'"),
 ):
-    """
-    Extract decisions and action items from the transcript.
-    Results are cached — pass ?force=true to re-run.
-    Override the engine per-request with ?engine=nlp or ?engine=llm.
-    """
     session = _require_session(session_id)
 
     if session["extraction"] and not force:
+        cached = session["extraction"].copy()
+        cached.pop("_timing", None)
         return {
             "session_id":       session_id,
             "cached":           True,
             "extractor_engine": session.get("extraction_engine", _extractor_label),
-            **session["extraction"],
+            **cached,
         }
 
-    # Per-request engine override
     if engine:
         if engine == "nlp":
             import custom_extractor as run_extractor
@@ -212,8 +214,11 @@ async def extract_from_session(
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=f"Extraction failed: {exc}")
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Extraction error: {exc}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=503, detail=f"Extraction error: {type(exc).__name__}: {exc}")
 
+    timing = result.pop("_timing", {})
     sessions.set_extraction(session_id, result)
     session["extraction_engine"] = engine_label
 
@@ -221,6 +226,7 @@ async def extract_from_session(
         "session_id":       session_id,
         "cached":           False,
         "extractor_engine": engine_label,
+        "timing":           timing,
         **result,
     }
 
@@ -229,7 +235,6 @@ async def extract_from_session(
 
 @app.post("/sessions/{session_id}/chat", tags=["Chat"], response_model=ChatResponse)
 async def chat_with_transcript(session_id: str, body: ChatRequest):
-    """Ask a question about the transcript. Always uses Ollama."""
     session = _require_session(session_id)
 
     if not body.question.strip():
@@ -244,7 +249,11 @@ async def chat_with_transcript(session_id: str, body: ChatRequest):
             filename=session["filename"],
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Ollama error — is it running? {exc}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=503, detail=f"LLM error: {exc}")
+
+    timing = result.pop("_timing", {})
 
     sessions.append_chat(session_id, "user",      body.question)
     sessions.append_chat(session_id, "assistant", result["answer"])
@@ -254,6 +263,7 @@ async def chat_with_transcript(session_id: str, body: ChatRequest):
         answer=result["answer"],
         citations=result.get("citations", []),
         session_id=session_id,
+        timing=timing,
     )
 
 
@@ -278,7 +288,6 @@ async def clear_chat_history(session_id: str):
 
 @app.get("/sessions/{session_id}/export/csv", tags=["Export"])
 async def export_csv(session_id: str):
-    """Download extraction results as CSV."""
     session    = _require_session(session_id)
     extraction = _require_extraction(session)
     csv_bytes  = export.to_csv(extraction, session["filename"])
@@ -291,7 +300,6 @@ async def export_csv(session_id: str):
 
 @app.get("/sessions/{session_id}/export/pdf", tags=["Export"])
 async def export_pdf(session_id: str):
-    """Download extraction results as a formatted PDF report."""
     session    = _require_session(session_id)
     extraction = _require_extraction(session)
     try:
@@ -318,7 +326,7 @@ async def get_transcript(
     return {"session_id": session_id, "filename": session["filename"], "segments": session["segments"]}
 
 
-# ── Private helpers ───────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _require_session(session_id: str) -> dict:
     session = sessions.get_session(session_id)

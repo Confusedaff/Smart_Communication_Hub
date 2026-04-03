@@ -1,3 +1,4 @@
 backend/backend
 web/node_modules
 backend/__pycache__
+backend/.env

@@ -1,11 +1,14 @@
 """
-extractor.py — Extract decisions and action items using Ollama LLM.
+extractor.py — Extract decisions and action items using LLM (Ollama or Groq).
 """
 
 import json
 import re
-from ollama_client import generate
+import time
+import logging
+from ollama_client import generate, get_expected_duration
 
+logger = logging.getLogger(__name__)
 
 _SYSTEM = """You are a precise meeting analyst. Your job is to extract structured 
 intelligence from raw meeting transcripts. You ALWAYS respond with valid JSON only — 
@@ -35,64 +38,69 @@ JSON response:"""
 
 
 async def extract(raw_text: str, segments: list[dict]) -> dict:
-    prompt = _EXTRACTION_PROMPT.format(transcript=raw_text[:12000])
+    # Log expected wait time before starting
+    timing_info = get_expected_duration("extract")
+    logger.info(
+        f"[Extractor] Starting LLM extraction | backend={timing_info['backend']} "
+        f"| expected≈{timing_info['estimated_seconds']}s ({timing_info['source']})"
+    )
+    print(
+        f"\n⏱  LLM Extraction starting..."
+        f"\n   Backend  : {timing_info['backend'].upper()}"
+        f"\n   Expected : ~{timing_info['estimated_seconds']}s ({timing_info['source']})"
+        f"\n   Tip      : {timing_info['tip']}\n"
+    )
 
+    # Trim transcript — smaller = faster, still accurate
+    transcript_chunk = raw_text[:4000]
+    prompt = _EXTRACTION_PROMPT.format(transcript=transcript_chunk)
+
+    start = time.perf_counter()
     raw_response = await generate(
         prompt=prompt,
         system=_SYSTEM,
         temperature=0.1,
-        max_tokens=3000,
+        max_tokens=2000,
     )
+    elapsed = round(time.perf_counter() - start, 2)
 
-    return _parse_llm_response(raw_response)
+    print(f"✅ LLM Extraction complete in {elapsed}s\n")
+    logger.info(f"[Extractor] Done in {elapsed}s")
+
+    result = _parse_llm_response(raw_response)
+    result["_timing"] = {"elapsed_seconds": elapsed, "backend": timing_info["backend"]}
+    return result
 
 
 def _parse_llm_response(raw: str) -> dict:
-    """
-    Robustly parse JSON from LLM output.
-    Handles: markdown fences, leading text, truncated responses, extra whitespace.
-    """
-    # 1. Strip markdown fences
     cleaned = re.sub(r"```(?:json|JSON)?", "", raw).strip().strip("`").strip()
-
-    # 2. Find the outermost { ... } — handles leading/trailing text
     start = cleaned.find("{")
     end   = cleaned.rfind("}")
 
     if start == -1 or end == -1 or end <= start:
-        # No JSON object at all — return empty structure
         return {"decisions": [], "action_items": [], "summary": cleaned[:300] if cleaned else ""}
 
     json_str = cleaned[start : end + 1]
 
-    # 3. Try direct parse first
     try:
-        data = json.loads(json_str)
-        return _normalise(data)
+        return _normalise(json.loads(json_str))
     except json.JSONDecodeError:
         pass
 
-    # 4. Try to fix common LLM JSON issues:
-    #    - trailing commas before } or ]
-    #    - single quotes instead of double quotes
-    #    - unescaped newlines inside strings
     fixed = json_str
-    fixed = re.sub(r",\s*([}\]])", r"\1", fixed)          # trailing commas
-    fixed = re.sub(r"(?<![\\])'", '"', fixed)              # single → double quotes
-    fixed = re.sub(r"[\x00-\x1f\x7f]", " ", fixed)        # control chars
+    fixed = re.sub(r",\s*([}\]])", r"\1", fixed)
+    fixed = re.sub(r"(?<![\\])'", '"', fixed)
+    fixed = re.sub(r"[\x00-\x1f\x7f]", " ", fixed)
 
     try:
-        data = json.loads(fixed)
-        return _normalise(data)
+        return _normalise(json.loads(fixed))
     except json.JSONDecodeError:
         pass
 
-    # 5. Last resort — extract whatever arrays we can find
     return _extract_partial(json_str)
 
 
 def _normalise(data: dict) -> dict:
-    """Ensure all required keys exist and items have proper defaults."""
     data.setdefault("decisions", [])
     data.setdefault("action_items", [])
     data.setdefault("summary", "")
@@ -112,15 +120,8 @@ def _normalise(data: dict) -> dict:
 
 
 def _extract_partial(json_str: str) -> dict:
-    """
-    If full JSON parse fails, try to extract individual fields with regex.
-    Returns a best-effort result rather than failing hard.
-    """
     result = {"decisions": [], "action_items": [], "summary": ""}
-
-    # Try to get summary at least
     m = re.search(r'"summary"\s*:\s*"(.*?)"(?=\s*[,}])', json_str, re.DOTALL)
     if m:
         result["summary"] = m.group(1).replace("\\n", " ").strip()
-
     return result

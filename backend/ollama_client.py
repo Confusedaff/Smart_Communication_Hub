@@ -1,89 +1,227 @@
 """
-ollama_client.py — Thin async wrapper around the Ollama local API.
+ollama_client.py — Async wrapper around Ollama local API + Groq cloud fallback.
 
-Ollama must be running:  ollama serve
-Model must be pulled:    ollama pull llama3.2
+Priority (automatic):
+  1. Groq  (cloud, free tier, very fast) — if GROQ_API_KEY is present in .env
+  2. Ollama (local, private, free)       — fallback when Groq key is missing
 
-Default base URL: http://localhost:11434
-Override via env var:    OLLAMA_BASE_URL=http://192.168.1.10:11434
+.env file (place next to main.py):
+    GROQ_API_KEY=gsk_...            # free at console.groq.com
+    OLLAMA_MODEL=gemma2:9b          # your local model name
+    GROQ_MODEL=llama-3.1-8b-instant # optional
+    OLLAMA_TIMEOUT=300              # optional, seconds
 """
 
 import os
 import json
+import time
 import httpx
+import logging
+from pathlib import Path
 from typing import AsyncGenerator
 
+# ── Load .env automatically ───────────────────────────────────────────────────
+try:
+    from dotenv import load_dotenv
+    _env_path = Path(__file__).parent / ".env"
+    load_dotenv(dotenv_path=_env_path)
+except ImportError:
+    pass  # python-dotenv not installed — fall back to system env vars only
+
+logger = logging.getLogger(__name__)
+
+# ── Config (read after .env is loaded) ───────────────────────────────────────
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-DEFAULT_MODEL   = os.getenv("OLLAMA_MODEL", "llama3.2")
-TIMEOUT         = float(os.getenv("OLLAMA_TIMEOUT", "120"))  # seconds
+DEFAULT_MODEL   = os.getenv("OLLAMA_MODEL", "gemma2:9b")
+TIMEOUT         = float(os.getenv("OLLAMA_TIMEOUT", "600"))
+
+GROQ_API_KEY    = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL      = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_BASE_URL   = "https://api.groq.com/openai/v1"
 
 
-# ── Core generate (non-streaming) ────────────────────────────────────────────
+# ── Active backend: Groq if key present, else Ollama ─────────────────────────
+def _active_backend() -> str:
+    return "groq" if GROQ_API_KEY else "ollama"
+
+
+# ── Expected timing estimates ─────────────────────────────────────────────────
+_TIMING_ESTIMATES = {
+    "groq":   {"extract": 5,  "chat": 3},
+    "ollama": {"extract": 90, "chat": 25},
+}
+_timing_history: list[float] = []
+_MAX_HISTORY = 10
+
+
+def _record_timing(duration: float) -> None:
+    _timing_history.append(duration)
+    if len(_timing_history) > _MAX_HISTORY:
+        _timing_history.pop(0)
+
+
+def get_expected_duration(task: str = "chat") -> dict:
+    """Return expected duration info. Call this before firing a request."""
+    backend = _active_backend()
+    static  = _TIMING_ESTIMATES.get(backend, {}).get(task, 30)
+
+    if _timing_history:
+        estimated = round(sum(_timing_history) / len(_timing_history), 1)
+        source    = "based on recent calls"
+    else:
+        estimated = static
+        source    = "estimated"
+
+    return {
+        "backend":           backend,
+        "estimated_seconds": estimated,
+        "source":            source,
+        "tip": (
+            "Using Groq cloud — fast responses expected."
+            if backend == "groq" else
+            "Add GROQ_API_KEY to your .env file for much faster responses (free at console.groq.com)."
+        ),
+    }
+
+
+# ── Public generate ───────────────────────────────────────────────────────────
 
 async def generate(
     prompt: str,
     system: str = "",
-    model: str = DEFAULT_MODEL,
     temperature: float = 0.2,
     max_tokens: int = 2048,
 ) -> str:
-    """
-    Send a prompt to Ollama and return the full response text.
-    Raises httpx.HTTPError on connection / HTTP failure.
-    """
+    backend = _active_backend()
+    start   = time.perf_counter()
+
+    try:
+        if backend == "groq":
+            result = await _groq_generate(prompt, system, temperature, max_tokens)
+        else:
+            result = await _ollama_generate(prompt, system, temperature, max_tokens)
+    except Exception as exc:
+        fallback = "ollama" if backend == "groq" else "groq"
+        logger.warning(f"[LLM] {backend} failed ({exc}) — falling back to {fallback}")
+        if fallback == "groq" and GROQ_API_KEY:
+            result = await _groq_generate(prompt, system, temperature, max_tokens)
+        else:
+            result = await _ollama_generate(prompt, system, temperature, max_tokens)
+
+    elapsed = round(time.perf_counter() - start, 2)
+    _record_timing(elapsed)
+    logger.info(f"[LLM:generate] backend={backend} elapsed={elapsed}s")
+    return result
+
+
+async def chat(
+    messages: list[dict],
+    temperature: float = 0.3,
+    max_tokens: int = 2048,
+) -> str:
+    backend = _active_backend()
+    start   = time.perf_counter()
+
+    try:
+        if backend == "groq":
+            result = await _groq_chat(messages, temperature, max_tokens)
+        else:
+            result = await _ollama_chat(messages, temperature, max_tokens)
+    except Exception as exc:
+        fallback = "ollama" if backend == "groq" else "groq"
+        logger.warning(f"[LLM] {backend} failed ({exc}) — falling back to {fallback}")
+        if fallback == "groq" and GROQ_API_KEY:
+            result = await _groq_chat(messages, temperature, max_tokens)
+        else:
+            result = await _ollama_chat(messages, temperature, max_tokens)
+
+    elapsed = round(time.perf_counter() - start, 2)
+    _record_timing(elapsed)
+    logger.info(f"[LLM:chat] backend={backend} elapsed={elapsed}s")
+    return result
+
+
+# ── Ollama ────────────────────────────────────────────────────────────────────
+
+async def _ollama_generate(prompt, system, temperature, max_tokens) -> str:
     payload = {
-        "model": model,
+        "model":  DEFAULT_MODEL,
         "prompt": prompt,
         "system": system,
         "stream": False,
-        "options": {
-            "temperature": temperature,
-            "num_predict": max_tokens,
-        },
+        "options": {"temperature": temperature, "num_predict": max_tokens},
     }
-
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        resp = await client.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload)
+        resp.raise_for_status()
+        return resp.json().get("response", "").strip()
+
+
+async def _ollama_chat(messages, temperature, max_tokens) -> str:
+    payload = {
+        "model":    DEFAULT_MODEL,
+        "messages": messages,
+        "stream":   False,
+        "options":  {"temperature": temperature, "num_predict": max_tokens},
+    }
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        resp = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload)
+        resp.raise_for_status()
+        return resp.json().get("message", {}).get("content", "").strip()
+
+
+# ── Groq (OpenAI-compatible) ──────────────────────────────────────────────────
+
+async def _groq_generate(prompt, system, temperature, max_tokens) -> str:
+    if not GROQ_API_KEY:
+        raise ValueError("GROQ_API_KEY not set")
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+    return await _groq_chat(messages, temperature, max_tokens)
+
+
+async def _groq_chat(messages, temperature, max_tokens) -> str:
+    if not GROQ_API_KEY:
+        raise ValueError("GROQ_API_KEY not set")
+    payload = {
+        "model":       GROQ_MODEL,
+        "messages":    messages,
+        "temperature": temperature,
+        "max_tokens":  max_tokens,
+    }
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type":  "application/json",
+    }
+    async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
-            f"{OLLAMA_BASE_URL}/api/generate",
+            f"{GROQ_BASE_URL}/chat/completions",
             json=payload,
+            headers=headers,
         )
         resp.raise_for_status()
-        data = resp.json()
-        return data.get("response", "").strip()
+        return resp.json()["choices"][0]["message"]["content"].strip()
 
 
-# ── Streaming generate ────────────────────────────────────────────────────────
+# ── Streaming (Ollama only) ───────────────────────────────────────────────────
 
 async def generate_stream(
     prompt: str,
     system: str = "",
-    model: str = DEFAULT_MODEL,
     temperature: float = 0.2,
     max_tokens: int = 2048,
 ) -> AsyncGenerator[str, None]:
-    """
-    Stream tokens from Ollama one chunk at a time.
-    Usage:
-        async for token in generate_stream(prompt):
-            print(token, end="", flush=True)
-    """
     payload = {
-        "model": model,
+        "model":  DEFAULT_MODEL,
         "prompt": prompt,
         "system": system,
         "stream": True,
-        "options": {
-            "temperature": temperature,
-            "num_predict": max_tokens,
-        },
+        "options": {"temperature": temperature, "num_predict": max_tokens},
     }
-
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        async with client.stream(
-            "POST",
-            f"{OLLAMA_BASE_URL}/api/generate",
-            json=payload,
-        ) as resp:
+        async with client.stream("POST", f"{OLLAMA_BASE_URL}/api/generate", json=payload) as resp:
             resp.raise_for_status()
             async for line in resp.aiter_lines():
                 if not line.strip():
@@ -99,48 +237,42 @@ async def generate_stream(
                     continue
 
 
-# ── Chat (multi-turn) ─────────────────────────────────────────────────────────
-
-async def chat(
-    messages: list[dict],
-    model: str = DEFAULT_MODEL,
-    temperature: float = 0.3,
-    max_tokens: int = 2048,
-) -> str:
-    """
-    Multi-turn chat using Ollama's /api/chat endpoint.
-    messages = [{"role": "user"|"assistant"|"system", "content": "..."}]
-    """
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-        "options": {
-            "temperature": temperature,
-            "num_predict": max_tokens,
-        },
-    }
-
-    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        resp = await client.post(
-            f"{OLLAMA_BASE_URL}/api/chat",
-            json=payload,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("message", {}).get("content", "").strip()
-
-
 # ── Health check ──────────────────────────────────────────────────────────────
 
 async def health_check() -> dict:
-    """Check if Ollama is reachable and return available models."""
+    backend = _active_backend()
+    result  = {"active_backend": backend}
+
+    # Ollama status
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             resp = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
             resp.raise_for_status()
-            data = resp.json()
-            models = [m["name"] for m in data.get("models", [])]
-            return {"status": "ok", "models": models, "base_url": OLLAMA_BASE_URL}
+            models = [m["name"] for m in resp.json().get("models", [])]
+            result["ollama"] = {"status": "ok", "models": models, "model_in_use": DEFAULT_MODEL}
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "base_url": OLLAMA_BASE_URL}
+        result["ollama"] = {"status": "unavailable", "error": str(exc)}
+
+    # Groq status
+    if GROQ_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(
+                    f"{GROQ_BASE_URL}/models",
+                    headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                )
+                resp.raise_for_status()
+                result["groq"] = {"status": "ok", "model_in_use": GROQ_MODEL}
+        except Exception as exc:
+            result["groq"] = {"status": "error", "error": str(exc)}
+    else:
+        result["groq"] = {
+            "status": "not configured",
+            "tip":    "Add GROQ_API_KEY to your .env file — free at console.groq.com",
+        }
+
+    result["timing_history"] = {
+        "recent_calls": len(_timing_history),
+        "avg_seconds":  round(sum(_timing_history) / len(_timing_history), 1) if _timing_history else None,
+    }
+    return result

@@ -1,25 +1,15 @@
 """
 chatbot.py — Contextual Q&A chatbot over a meeting transcript.
-
-Every answer must cite:
-  - which speaker said it (if applicable)
-  - the relevant excerpt from the transcript
-
-Response schema:
-{
-  "answer": "...",
-  "citations": [
-    { "speaker": "...", "excerpt": "...", "timestamp": "..." }
-  ]
-}
+Includes per-query timing and expected wait time display.
 """
 
 import json
 import re
-from ollama_client import chat as ollama_chat
+import time
+import logging
+from ollama_client import chat as llm_chat, get_expected_duration
 
-
-# ── System prompt ─────────────────────────────────────────────────────────────
+logger = logging.getLogger(__name__)
 
 _SYSTEM = """You are a precise meeting intelligence assistant. You answer questions 
 strictly based on the meeting transcript provided. 
@@ -38,9 +28,6 @@ Response format:
   ]
 }"""
 
-
-# ── Context-injection prompt ──────────────────────────────────────────────────
-
 _CONTEXT_PROMPT = """MEETING TRANSCRIPT (filename: {filename}):
 ---
 {transcript}
@@ -52,8 +39,6 @@ Respond with JSON only.
 QUESTION: {question}"""
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
-
 async def answer(
     question: str,
     raw_text: str,
@@ -61,55 +46,49 @@ async def answer(
     chat_history: list[dict],
     filename: str = "transcript",
 ) -> dict:
-    """
-    Answer a question about the transcript.
+    timing_info = get_expected_duration("chat")
+    logger.info(
+        f"[Chatbot] Query starting | backend={timing_info['backend']} "
+        f"| expected≈{timing_info['estimated_seconds']}s"
+    )
+    print(
+        f"\n💬 Chat query: \"{question[:60]}{'...' if len(question) > 60 else ''}\""
+        f"\n   Backend  : {timing_info['backend'].upper()}"
+        f"\n   Expected : ~{timing_info['estimated_seconds']}s ({timing_info['source']})\n"
+    )
 
-    Args:
-        question:     The user's question.
-        raw_text:     Plain text of the full transcript.
-        segments:     Parsed segments (used for speaker lookups).
-        chat_history: Previous turns [{role, content}] for multi-turn context.
-        filename:     Original upload filename (used in citation).
-
-    Returns:
-        { "answer": str, "citations": list[dict] }
-    """
-    # Build the message list for multi-turn chat
     messages = [{"role": "system", "content": _SYSTEM}]
 
-    # Inject the transcript as the first user message (context anchor)
     transcript_context = _CONTEXT_PROMPT.format(
         filename=filename,
-        transcript=raw_text[:10000],  # cap to avoid context overflow
+        transcript=raw_text[:6000],  # trimmed for speed
         question=question,
     )
 
-    # Add previous conversation turns (skip system messages already added)
-    for turn in chat_history:
+    for turn in chat_history[-6:]:  # only last 3 exchanges for speed
         if turn["role"] in ("user", "assistant"):
             messages.append({"role": turn["role"], "content": turn["content"]})
 
-    # Add current question with full transcript context
     messages.append({"role": "user", "content": transcript_context})
 
-    raw_response = await ollama_chat(
+    start = time.perf_counter()
+    raw_response = await llm_chat(
         messages=messages,
         temperature=0.2,
-        max_tokens=1500,
+        max_tokens=1000,
     )
+    elapsed = round(time.perf_counter() - start, 2)
 
-    return _parse_response(raw_response, question)
+    print(f"✅ Chat response in {elapsed}s\n")
+    logger.info(f"[Chatbot] Done in {elapsed}s")
 
+    result = _parse_response(raw_response, question)
+    result["_timing"] = {"elapsed_seconds": elapsed, "backend": timing_info["backend"]}
+    return result
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _parse_response(raw: str, question: str) -> dict:
-    """
-    Parse JSON response from the LLM.
-    Falls back to a plain-text answer if JSON parsing fails.
-    """
     cleaned = re.sub(r"```(?:json)?", "", raw).strip().strip("`").strip()
-
     start = cleaned.find("{")
     end   = cleaned.rfind("}")
 
@@ -118,18 +97,14 @@ def _parse_response(raw: str, question: str) -> dict:
             data = json.loads(cleaned[start : end + 1])
             data.setdefault("answer", "")
             data.setdefault("citations", [])
-
-            # Normalise citations
             for c in data["citations"]:
                 c.setdefault("speaker", None)
                 c.setdefault("excerpt", "")
                 c.setdefault("timestamp", None)
-
             return data
         except json.JSONDecodeError:
             pass
 
-    # Fallback: return raw text as the answer with no citations
     return {
         "answer": cleaned or "I could not find a relevant answer in the transcript.",
         "citations": [],
@@ -137,7 +112,6 @@ def _parse_response(raw: str, question: str) -> dict:
 
 
 def build_history_messages(chat_history: list[dict]) -> list[dict]:
-    """Convert stored chat history to Ollama message format."""
     return [
         {"role": h["role"], "content": h["content"]}
         for h in chat_history
