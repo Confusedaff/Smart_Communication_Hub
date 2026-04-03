@@ -4,6 +4,25 @@ A React + Vite single-page application that provides a polished UI for the Meeti
 
 ---
 
+## Screenshots
+
+**Upload screen** — drag-and-drop landing page with animated grid background
+![Upload screen](https://github.com/user-attachments/assets/ee312852-ed1a-4b2c-8134-9713b702e266)
+
+**Uploading state** — spinner and progress message while the file is sent to the backend
+![Uploading state](https://github.com/user-attachments/assets/163fae0c-3189-4039-a1f9-999712e78eed)
+
+**Extraction panel** — decisions and action items extracted from the transcript, with speaker attribution and evidence quotes
+![Extraction panel](https://github.com/user-attachments/assets/9ad8b67d-409e-4674-91c0-73eaaf8cee36)
+
+**Chatbot panel** — contextual Q&A with cited sources, response timing, and Groq/Ollama backend indicator
+![Chatbot panel](https://github.com/user-attachments/assets/3ef3e029-6669-499b-988b-a703e28f8d43)
+
+**Transcript panel** — colour-coded speaker segments with full speaker legend
+![Transcript panel](https://github.com/user-attachments/assets/0a72e9ec-4f5a-4ce1-99af-b26563301e9f)
+
+---
+
 ## Table of Contents
 
 - [How It Works](#how-it-works)
