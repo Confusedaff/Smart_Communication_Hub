@@ -1,8 +1,6 @@
 name: mihub
 description: "A new Flutter project."
-
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
-
+publish_to: 'none'
 version: 1.0.0+1
 
 environment:
@@ -29,8 +27,20 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.1  
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icons/icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#25D366"
+  adaptive_icon_foreground: "assets/icons/icon1.png"
+  web:
+    generate: false
 
 flutter:
   uses-material-design: true
-  # assets:
-  #   - .env
+  assets:
+    - assets/icons/
+    # - .env
