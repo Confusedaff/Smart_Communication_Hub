@@ -44,8 +44,8 @@ class _ChatTabState extends State<ChatTab> {
       try {
         final list = json.decode(raw) as List<dynamic>;
         setState(() {
-          _messages.addAll(
-              list.map((e) => ChatMessage.fromJson(e as Map<String, dynamic>)));
+          _messages.addAll(list
+              .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>)));
         });
         _scrollToBottom();
       } catch (_) {}
@@ -55,10 +55,39 @@ class _ChatTabState extends State<ChatTab> {
   Future<void> _saveHistory() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-        _storageKey, json.encode(_messages.map((m) => m.toJson()).toList()));
+        _storageKey,
+        json.encode(_messages.map((m) => m.toJson()).toList()));
   }
 
   Future<void> _clearHistory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppTheme.bgCard,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
+        title: const Text('Clear conversation?',
+            style: TextStyle(
+                color: AppTheme.textPrimary, fontSize: 16)),
+        content: const Text(
+            'This will remove all messages from this session.',
+            style: TextStyle(
+                color: AppTheme.textSecondary, fontSize: 13)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentRed),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_storageKey);
     try {
@@ -98,8 +127,7 @@ class _ChatTabState extends State<ChatTab> {
       if (mounted) {
         setState(() {
           _messages.add(ChatMessage(
-              role: 'assistant',
-              content: 'Error: ${e.message}'));
+              role: 'assistant', content: 'Error: ${e.message}'));
           _isSending = false;
         });
       }
@@ -131,38 +159,19 @@ class _ChatTabState extends State<ChatTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        if (_messages.isNotEmpty)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppTheme.border)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton.icon(
-                  onPressed: _clearHistory,
-                  icon: const Icon(Icons.delete_outline,
-                      size: 14, color: AppTheme.textMuted),
-                  label: const Text('Clear history',
-                      style: TextStyle(
-                          color: AppTheme.textMuted, fontSize: 12)),
-                  style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4)),
-                ),
-              ],
-            ),
-          ),
+        if (_messages.isNotEmpty) _buildClearBar(),
         Expanded(
           child: _messages.isEmpty
               ? _buildEmptyState()
               : ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
+                  padding:
+                      const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   itemCount: _messages.length + (_isSending ? 1 : 0),
                   itemBuilder: (_, i) {
-                    if (i == _messages.length) return _buildTypingIndicator();
+                    if (i == _messages.length) {
+                      return _buildTypingIndicator();
+                    }
                     return _buildMessageBubble(_messages[i]);
                   },
                 ),
@@ -172,32 +181,80 @@ class _ChatTabState extends State<ChatTab> {
     );
   }
 
+  Widget _buildClearBar() {
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: const BoxDecoration(
+        border:
+            Border(bottom: BorderSide(color: AppTheme.border)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('${_messages.length ~/ 2} exchanges',
+              style: const TextStyle(
+                  color: AppTheme.textMuted, fontSize: 11)),
+          TextButton.icon(
+            onPressed: _clearHistory,
+            icon: const Icon(Icons.delete_outline,
+                size: 13, color: AppTheme.textMuted),
+            label: const Text('Clear',
+                style: TextStyle(
+                    color: AppTheme.textMuted, fontSize: 12)),
+            style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize:
+                    MaterialTapTargetSize.shrinkWrap),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEmptyState() {
     const suggestions = [
-      'What decisions were made?',
-      'What action items were assigned?',
-      'Who is responsible for the launch?',
-      'Summarise the key points.',
+      ('What decisions were made?', Icons.check_circle_outline),
+      ('What action items were assigned?', Icons.task_alt_outlined),
+      ('Who is responsible for the launch?', Icons.person_outline),
+      ('Summarise the key points.', Icons.summarize_outlined),
     ];
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
       child: Column(
         children: [
-          const Icon(Icons.chat_bubble_outline,
-              size: 48, color: AppTheme.textMuted),
-          const SizedBox(height: 16),
-          Text('Ask anything about this meeting',
-              style: Theme.of(context).textTheme.titleMedium),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppTheme.accentGlow,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppTheme.borderGlow),
+            ),
+            child: const Icon(Icons.chat_bubble_outline,
+                size: 32, color: AppTheme.accent),
+          ),
+          const SizedBox(height: 20),
+          const Text('Ask about this meeting',
+              style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18)),
           const SizedBox(height: 8),
-          Text('Responses include citations with speaker, timestamp, and excerpt.',
-              style: Theme.of(context).textTheme.bodyMedium,
+          const Text(
+              'Responses include citations with speaker, timestamp, and excerpt.',
+              style: TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                  height: 1.5),
               textAlign: TextAlign.center),
-          const SizedBox(height: 24),
-          ...suggestions.map((s) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+          const SizedBox(height: 28),
+          ...suggestions.map(((String text, IconData icon) s) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
                 child: GestureDetector(
                   onTap: () {
-                    _inputController.text = s;
+                    _inputController.text = s.$1;
                     _sendMessage();
                   },
                   child: Container(
@@ -205,17 +262,22 @@ class _ChatTabState extends State<ChatTab> {
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: AppTheme.bgElevated,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: AppTheme.border),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.lightbulb_outline,
-                            size: 16, color: AppTheme.accentAmber),
-                        const SizedBox(width: 10),
-                        Text(s,
+                        Icon(s.$2,
+                            size: 16,
+                            color: AppTheme.accent.withOpacity(0.7)),
+                        const SizedBox(width: 12),
+                        Text(s.$1,
                             style: const TextStyle(
-                                color: AppTheme.textSecondary, fontSize: 13)),
+                                color: AppTheme.textSecondary,
+                                fontSize: 13)),
+                        const Spacer(),
+                        const Icon(Icons.arrow_forward_rounded,
+                            size: 14, color: AppTheme.textMuted),
                       ],
                     ),
                   ),
@@ -237,14 +299,19 @@ class _ChatTabState extends State<ChatTab> {
         children: [
           if (!isUser) ...[
             Container(
-              width: 30,
-              height: 30,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
-                color: AppTheme.accent.withOpacity(0.15),
+                gradient: const LinearGradient(
+                  colors: [AppTheme.accentGlow, AppTheme.bgElevated],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 shape: BoxShape.circle,
+                border: Border.all(color: AppTheme.borderGlow),
               ),
               child: const Icon(Icons.hub_rounded,
-                  size: 16, color: AppTheme.accent),
+                  size: 15, color: AppTheme.accent),
             ),
             const SizedBox(width: 10),
           ],
@@ -255,70 +322,83 @@ class _ChatTabState extends State<ChatTab> {
                   : CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: isUser
-                        ? AppTheme.accent.withOpacity(0.15)
+                        ? AppTheme.accentGlow
                         : AppTheme.bgCard,
                     borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(12),
-                      topRight: const Radius.circular(12),
-                      bottomLeft: Radius.circular(isUser ? 12 : 2),
-                      bottomRight: Radius.circular(isUser ? 2 : 12),
+                      topLeft: const Radius.circular(16),
+                      topRight: const Radius.circular(16),
+                      bottomLeft:
+                          Radius.circular(isUser ? 16 : 4),
+                      bottomRight:
+                          Radius.circular(isUser ? 4 : 16),
                     ),
                     border: Border.all(
                         color: isUser
-                            ? AppTheme.accent.withOpacity(0.3)
+                            ? AppTheme.borderGlow
                             : AppTheme.border),
                   ),
-                  child: Text(
-                    msg.content,
-                    style: const TextStyle(
-                        color: AppTheme.textPrimary, fontSize: 14, height: 1.5),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        msg.content,
+                        style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 14,
+                            height: 1.55),
+                      ),
+                      // Timing label sits directly below the text, inside
+                      // the bubble — eliminates the large gap that appeared
+                      // when it was rendered outside as a sibling widget.
+                      if (!isUser && msg.timing != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '${msg.timing!.elapsedSeconds.toStringAsFixed(1)}s · ${msg.timing!.backend}',
+                          style: TextStyle(
+                              color: AppTheme.textMuted.withOpacity(0.7),
+                              fontSize: 11),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 if (!isUser && msg.citations.isNotEmpty) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   ...msg.citations.map((c) => _buildCitation(c)),
-                ],
-                if (!isUser && msg.timing != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '${msg.timing!.elapsedSeconds.toStringAsFixed(1)}s · ${msg.timing!.backend}',
-                    style: const TextStyle(
-                        color: AppTheme.textMuted, fontSize: 11),
-                  ),
                 ],
               ],
             ),
           ),
-          if (isUser) const SizedBox(width: 8),
         ],
       ),
     );
   }
 
   Widget _buildCitation(Citation c) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppTheme.bgDeep,
-        borderRadius: BorderRadius.circular(8),
-        border: const Border(
-          left: BorderSide(color: AppTheme.accentLight, width: 3),
-          top: BorderSide(color: AppTheme.border),
-          right: BorderSide(color: AppTheme.border),
-          bottom: BorderSide(color: AppTheme.border),
-        ),
-      ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Stack(
+        children: [
+          Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.fromLTRB(13, 11, 11, 11),
+            decoration: BoxDecoration(
+              color: AppTheme.bgDeep,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.border),
+            ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               const Icon(Icons.person_outline,
-                  size: 12, color: AppTheme.textMuted),
+                  size: 11, color: AppTheme.textMuted),
               const SizedBox(width: 4),
               Text(c.speaker,
                   style: const TextStyle(
@@ -327,7 +407,7 @@ class _ChatTabState extends State<ChatTab> {
                       fontWeight: FontWeight.w600)),
               const Spacer(),
               if (c.timestamp.isNotEmpty) ...[
-                const Icon(Icons.access_time,
+                const Icon(Icons.access_time_outlined,
                     size: 11, color: AppTheme.textMuted),
                 const SizedBox(width: 3),
                 Text(c.timestamp,
@@ -337,16 +417,26 @@ class _ChatTabState extends State<ChatTab> {
             ],
           ),
           if (c.excerpt.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 5),
             Text(
               '"${c.excerpt}"',
               style: const TextStyle(
-                  color: AppTheme.textMuted,
+                  color: AppTheme.textSecondary,
                   fontSize: 12,
                   fontStyle: FontStyle.italic,
                   height: 1.4),
             ),
           ],
+        ],
+      ),
+          ),
+          // Colored left accent bar
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 6, // matches margin bottom of the container
+            child: Container(width: 2, color: AppTheme.accent),
+          ),
         ],
       ),
     );
@@ -358,25 +448,31 @@ class _ChatTabState extends State<ChatTab> {
       child: Row(
         children: [
           Container(
-            width: 30,
-            height: 30,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
-              color: AppTheme.accent.withOpacity(0.15),
+              gradient: const LinearGradient(
+                colors: [AppTheme.accentGlow, AppTheme.bgElevated],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
               shape: BoxShape.circle,
+              border: Border.all(color: AppTheme.borderGlow),
             ),
             child: const Icon(Icons.hub_rounded,
-                size: 16, color: AppTheme.accent),
+                size: 15, color: AppTheme.accent),
           ),
           const SizedBox(width: 10),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               color: AppTheme.bgCard,
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
-                bottomRight: Radius.circular(12),
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+                bottomRight: Radius.circular(16),
+                bottomLeft: Radius.circular(4),
               ),
               border: Border.all(color: AppTheme.border),
             ),
@@ -389,7 +485,7 @@ class _ChatTabState extends State<ChatTab> {
 
   Widget _buildInputBar() {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
       decoration: const BoxDecoration(
         color: AppTheme.bgCard,
         border: Border(top: BorderSide(color: AppTheme.border)),
@@ -404,36 +500,47 @@ class _ChatTabState extends State<ChatTab> {
               decoration: const InputDecoration(
                 hintText: 'Ask about the meeting…',
                 isDense: true,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                contentPadding: EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 12),
               ),
               textInputAction: TextInputAction.send,
-              maxLines: 3,
+              maxLines: 4,
               minLines: 1,
             ),
           ),
           const SizedBox(width: 10),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            child: _isSending
-                ? const SizedBox(
-                    width: 44,
-                    height: 44,
-                    child: Center(
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: AppTheme.accent)))
-                : IconButton(
-                    onPressed: _sendMessage,
-                    icon: const Icon(Icons.send_rounded),
-                    color: AppTheme.accent,
-                    style: IconButton.styleFrom(
-                      backgroundColor: AppTheme.accent.withOpacity(0.15),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+          _isSending
+              ? Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentGlow,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: AppTheme.accent),
                     ),
                   ),
-          ),
+                )
+              : GestureDetector(
+                  onTap: _sendMessage,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppTheme.accent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.send_rounded,
+                        color: Colors.white, size: 20),
+                  ),
+                ),
         ],
       ),
     );
@@ -455,7 +562,8 @@ class _TypingDotsState extends State<_TypingDots>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
+        vsync: this,
+        duration: const Duration(milliseconds: 1400))
       ..repeat();
   }
 
@@ -473,16 +581,21 @@ class _TypingDotsState extends State<_TypingDots>
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (i) {
-            final offset = (i * 0.33);
-            final t = (_ctrl.value - offset).clamp(0.0, 1.0);
+            final offset = i * 0.28;
+            final t = ((_ctrl.value - offset) % 1.0).clamp(0.0, 1.0);
             final opacity = t < 0.5 ? t * 2 : (1 - t) * 2;
-            return Container(
-              width: 7,
-              height: 7,
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              decoration: BoxDecoration(
-                color: AppTheme.textSecondary.withOpacity(0.3 + opacity * 0.7),
-                shape: BoxShape.circle,
+            final scale = 0.7 + opacity * 0.3;
+            return Transform.scale(
+              scale: scale,
+              child: Container(
+                width: 7,
+                height: 7,
+                margin: const EdgeInsets.symmetric(horizontal: 2.5),
+                decoration: BoxDecoration(
+                  color: AppTheme.accent
+                      .withOpacity(0.3 + opacity * 0.7),
+                  shape: BoxShape.circle,
+                ),
               ),
             );
           }),

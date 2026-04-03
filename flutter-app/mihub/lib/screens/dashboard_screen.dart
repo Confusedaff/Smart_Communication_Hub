@@ -5,7 +5,6 @@ import 'package:open_filex/open_filex.dart';
 import '../models/session_model.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/status_badge.dart';
 import 'extraction_tab.dart';
 import 'chat_tab.dart';
 import 'transcript_tab.dart';
@@ -24,23 +23,10 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _DashboardScreenState extends State<DashboardScreen> {
+  int _selectedIndex = 0;
   String _engine = 'llm';
   bool _isExporting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
 
   Future<void> _exportCsv() async {
     setState(() => _isExporting = true);
@@ -52,9 +38,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       await file.writeAsBytes(bytes);
       await OpenFilex.open(file.path);
     } on ApiException catch (e) {
-      if (mounted) {
-        _showError(e.message);
-      }
+      if (mounted) _showError(e.message);
     } finally {
       if (mounted) setState(() => _isExporting = false);
     }
@@ -70,9 +54,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       await file.writeAsBytes(bytes);
       await OpenFilex.open(file.path);
     } on ApiException catch (e) {
-      if (mounted) {
-        _showError(e.message);
-      }
+      if (mounted) _showError(e.message);
     } finally {
       if (mounted) setState(() => _isExporting = false);
     }
@@ -80,9 +62,128 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: AppTheme.accentRed,
+      SnackBar(content: Text(msg), backgroundColor: AppTheme.accentRed),
+    );
+  }
+
+  void _onNavTap(int index) {
+    if (index == 3) {
+      widget.onNewUpload();
+    } else {
+      setState(() => _selectedIndex = index);
+    }
+  }
+
+  void _showExportSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.bgCard,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _sheetHandle(),
+            const SizedBox(height: 20),
+            Text('Export Report', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 6),
+            Text('Download your meeting analysis',
+                style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 24),
+            _exportTile(
+              icon: Icons.table_chart_outlined,
+              iconColor: AppTheme.accentGreen,
+              label: 'Export as CSV',
+              subtitle: 'Spreadsheet with decisions & actions',
+              onTap: () {
+                Navigator.pop(context);
+                _exportCsv();
+              },
+            ),
+            const SizedBox(height: 12),
+            _exportTile(
+              icon: Icons.picture_as_pdf_outlined,
+              iconColor: AppTheme.accentRed,
+              label: 'Export as PDF',
+              subtitle: 'Formatted report document',
+              onTap: () {
+                Navigator.pop(context);
+                _exportPdf();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sheetHandle() {
+    return Center(
+      child: Container(
+        width: 36,
+        height: 4,
+        decoration: BoxDecoration(
+          color: AppTheme.borderBright,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+
+  Widget _exportTile({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: AppTheme.bgElevated,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: iconColor, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label,
+                        style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14)),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: const TextStyle(
+                            color: AppTheme.textSecondary, fontSize: 12)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right,
+                  color: AppTheme.textMuted, size: 20),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -92,25 +193,32 @@ class _DashboardScreenState extends State<DashboardScreen>
       context: context,
       backgroundColor: AppTheme.bgCard,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Session Info',
+            Center(child: _sheetHandle()),
+            const SizedBox(height: 20),
+            Text('Session Details',
                 style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 16),
-            _infoRow('Session ID', widget.session.sessionId),
-            _infoRow('File', widget.session.filename),
-            _infoRow('Segments', '${widget.session.segmentCount}'),
-            _infoRow('Characters', '${widget.session.charCount}'),
-            _infoRow('Speakers', widget.session.speakers.join(', ')),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
+            _infoRow(Icons.fingerprint, 'Session ID',
+                widget.session.sessionId),
+            _infoRow(Icons.insert_drive_file_outlined, 'File',
+                widget.session.filename),
+            _infoRow(Icons.segment, 'Segments',
+                '${widget.session.segmentCount}'),
+            _infoRow(Icons.text_fields, 'Characters',
+                '${widget.session.charCount}'),
+            _infoRow(Icons.people_outline, 'Speakers',
+                widget.session.speakers.join(', ')),
+            const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
-              child: TextButton(
+              child: OutlinedButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Close'),
               ),
@@ -121,14 +229,16 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _infoRow(String label, String value) {
+  Widget _infoRow(IconData icon, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 9),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Icon(icon, size: 15, color: AppTheme.textMuted),
+          const SizedBox(width: 12),
           SizedBox(
-            width: 100,
+            width: 88,
             child: Text(label,
                 style: const TextStyle(
                     color: AppTheme.textMuted, fontSize: 13)),
@@ -148,131 +258,103 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Meeting Intelligence Hub'),
-        actions: [
-          // Engine toggle
-          _EngineToggle(
-            value: _engine,
-            onChanged: (v) => setState(() => _engine = v),
-          ),
-          const SizedBox(width: 4),
-          IconButton(
-            icon: const Icon(Icons.info_outline, size: 20),
-            onPressed: _showSessionInfo,
-            tooltip: 'Session info',
+      appBar: _buildAppBar(),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          ExtractionTab(
+              sessionId: widget.session.sessionId, engine: _engine),
+          ChatTab(sessionId: widget.session.sessionId),
+          TranscriptTab(sessionId: widget.session.sessionId),
+        ],
+      ),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Meeting Intelligence',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          Text(
+            widget.session.filename,
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppTheme.textSecondary,
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w400,
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.bolt_rounded, size: 18), text: 'Extract'),
-            Tab(icon: Icon(Icons.chat_bubble_outline, size: 18), text: 'Chat'),
-            Tab(icon: Icon(Icons.article_outlined, size: 18), text: 'Transcript'),
-          ],
+      ),
+      actions: [
+        _EngineToggle(
+          value: _engine,
+          onChanged: (v) => setState(() => _engine = v),
         ),
-      ),
-      body: Column(
-        children: [
-          _buildSessionBanner(),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                ExtractionTab(
-                  sessionId: widget.session.sessionId,
-                  engine: _engine,
+        const SizedBox(width: 4),
+        _isExporting
+            ? const Padding(
+                padding: EdgeInsets.all(12),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: AppTheme.accent),
                 ),
-                ChatTab(
-                  sessionId: widget.session.sessionId,
-                ),
-                TranscriptTab(
-                  sessionId: widget.session.sessionId,
-                ),
-              ],
-            ),
-          ),
-          _buildBottomBar(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSessionBanner() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: AppTheme.bgElevated,
-      child: Row(
-        children: [
-          const Icon(Icons.insert_drive_file_outlined,
-              size: 16, color: AppTheme.textMuted),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              widget.session.filename,
-              style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          StatusBadge(
-              label: '${widget.session.segmentCount} segments',
-              color: AppTheme.textMuted),
-          if (widget.session.speakers.isNotEmpty) ...[
-            const SizedBox(width: 6),
-            StatusBadge(
-                label: '${widget.session.speakers.length} speakers',
-                color: AppTheme.accent),
-          ],
-        ],
+              )
+            : IconButton(
+                icon: const Icon(Icons.ios_share_outlined, size: 20),
+                onPressed: _showExportSheet,
+                tooltip: 'Export',
+              ),
+        IconButton(
+          icon: const Icon(Icons.info_outline, size: 20),
+          onPressed: _showSessionInfo,
+          tooltip: 'Session info',
+        ),
+        const SizedBox(width: 4),
+      ],
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(1),
+        child: Container(height: 1, color: AppTheme.border),
       ),
     );
   }
 
-  Widget _buildBottomBar() {
+  Widget _buildBottomNav() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: const BoxDecoration(
-        color: AppTheme.bgCard,
-        border: Border(top: BorderSide(color: AppTheme.border)),
+        border: Border(top: BorderSide(color: AppTheme.border, width: 1)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: _isExporting ? null : _exportCsv,
-              icon: _isExporting
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppTheme.accentLight))
-                  : const Icon(Icons.download_rounded, size: 16),
-              label: const Text('CSV'),
-            ),
+      child: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: _onNavTap,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.bolt_outlined),
+            selectedIcon: Icon(Icons.bolt_rounded),
+            label: 'Extract',
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: _isExporting ? null : _exportPdf,
-              icon: _isExporting
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppTheme.accentLight))
-                  : const Icon(Icons.picture_as_pdf_outlined, size: 16),
-              label: const Text('PDF'),
-            ),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble_rounded),
+            label: 'Chat',
           ),
-          const SizedBox(width: 10),
-          OutlinedButton.icon(
-            onPressed: widget.onNewUpload,
-            icon: const Icon(Icons.add_rounded, size: 16),
-            label: const Text('New'),
+          NavigationDestination(
+            icon: Icon(Icons.article_outlined),
+            selectedIcon: Icon(Icons.article_rounded),
+            label: 'Transcript',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.add_circle_outline),
+            selectedIcon: Icon(Icons.add_circle_rounded),
+            label: 'New',
           ),
         ],
       ),
@@ -288,32 +370,40 @@ class _EngineToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLlm = value == 'llm';
     return GestureDetector(
-      onTap: () => onChanged(value == 'llm' ? 'nlp' : 'llm'),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      onTap: () => onChanged(isLlm ? 'nlp' : 'llm'),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: AppTheme.bgElevated,
+          color: isLlm
+              ? AppTheme.accentGlow
+              : AppTheme.accentGreen.withOpacity(0.12),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppTheme.borderBright),
+          border: Border.all(
+            color: isLlm
+                ? AppTheme.borderGlow
+                : AppTheme.accentGreen.withOpacity(0.4),
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              value == 'llm' ? Icons.psychology : Icons.memory,
-              size: 14,
-              color: value == 'llm' ? AppTheme.accent : AppTheme.accentGreen,
+              isLlm ? Icons.psychology_outlined : Icons.memory_outlined,
+              size: 13,
+              color: isLlm ? AppTheme.accentLight : AppTheme.accentGreen,
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 5),
             Text(
-              value == 'llm' ? 'LLM' : 'NLP',
+              isLlm ? 'LLM' : 'NLP',
               style: TextStyle(
-                color:
-                    value == 'llm' ? AppTheme.accent : AppTheme.accentGreen,
-                fontSize: 12,
+                color: isLlm ? AppTheme.accentLight : AppTheme.accentGreen,
+                fontSize: 11,
                 fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
               ),
             ),
           ],

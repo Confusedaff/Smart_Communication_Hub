@@ -59,25 +59,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppTheme.bgCard,
-        title: const Text('Clear All Chat History'),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Clear All Chat History',
+            style: TextStyle(color: AppTheme.textPrimary, fontSize: 16)),
         content: const Text(
-            'This will clear all locally cached chat history. Are you sure?',
-            style: TextStyle(color: AppTheme.textSecondary)),
+            'This will clear all locally cached chat history.',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
               child: const Text('Cancel')),
           ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
-              style:
-                  ElevatedButton.styleFrom(backgroundColor: AppTheme.accentRed),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accentRed),
               child: const Text('Clear')),
         ],
       ),
     );
     if (confirmed == true) {
       final prefs = await SharedPreferences.getInstance();
-      final keys = prefs.getKeys().where((k) => k.startsWith('chat_history_'));
+      final keys =
+          prefs.getKeys().where((k) => k.startsWith('chat_history_'));
       for (final k in keys) {
         await prefs.remove(k);
       }
@@ -94,141 +98,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionTitle('Backend Configuration'),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Server Status',
-                            style: TextStyle(
-                                color: AppTheme.textSecondary, fontSize: 13)),
-                        _isCheckingHealth
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppTheme.accent))
-                            : StatusBadge(
-                                label: _backendOnline == null
-                                    ? '—'
-                                    : (_backendOnline! ? 'Online' : 'Offline'),
-                                color: _backendOnline == null
-                                    ? AppTheme.textMuted
-                                    : (_backendOnline!
-                                        ? AppTheme.accentGreen
-                                        : AppTheme.accentRed),
-                              ),
-                      ],
-                    ),
-                    if (_healthData != null) ...[
-                      const SizedBox(height: 8),
-                      _infoRow('Version',
-                          _healthData!['version']?.toString() ?? '—'),
-                      _infoRow('Extractor',
-                          _healthData!['extractor_engine']?.toString() ?? '—'),
-                      _infoRow('Sessions',
-                          _healthData!['active_sessions']?.toString() ?? '—'),
-                    ],
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: _urlController,
-                      style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 13,
-                          color: AppTheme.textPrimary),
-                      decoration: const InputDecoration(
-                        labelText: 'Backend URL',
-                        hintText: 'http://10.0.2.2:8000',
-                      ),
-                      onSubmitted: (_) => _saveUrl(),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                              onPressed: _saveUrl,
-                              child: const Text('Save URL')),
-                        ),
-                        const SizedBox(width: 10),
-                        OutlinedButton.icon(
-                          onPressed: _checkHealth,
-                          icon: const Icon(Icons.refresh_rounded, size: 16),
-                          label: const Text('Test'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    const Divider(),
-                    const SizedBox(height: 8),
-                    Text('Connection tips:',
-                        style: Theme.of(context).textTheme.labelSmall),
-                    const SizedBox(height: 6),
-                    const Text(
-                      '• Android emulator: http://10.0.2.2:8000\n'
-                      '• iOS simulator: http://localhost:8000\n'
-                      '• Physical device: http://<LAN-IP>:8000\n'
-                      '• AWS/deployed: https://your-domain.com',
-                      style: TextStyle(
-                          color: AppTheme.textMuted,
-                          fontSize: 12,
-                          height: 1.8,
-                          fontFamily: 'monospace'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            _sectionTitle('Storage'),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.delete_sweep_outlined,
-                    color: AppTheme.accentRed),
-                title: const Text('Clear All Chat History'),
-                subtitle: const Text(
-                    'Remove all locally cached conversation history',
-                    style: TextStyle(fontSize: 12)),
-                trailing: const Icon(Icons.chevron_right,
-                    color: AppTheme.textMuted),
-                onTap: _clearAllHistory,
-              ),
-            ),
-            const SizedBox(height: 24),
-            _sectionTitle('About'),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _infoRow('App', 'Meeting Intelligence Hub'),
-                    _infoRow('Version', '1.0.0'),
-                    _infoRow('Backend', 'FastAPI + Groq/Ollama'),
-                    _infoRow('Repo', 'github.com/Confusedaff/Smart_Communication_Hub'),
-                  ],
-                ),
-              ),
-            ),
+            _sectionLabel('Backend'),
+            _buildBackendCard(),
+            const SizedBox(height: 28),
+            _sectionLabel('Storage'),
+            _buildStorageCard(),
+            const SizedBox(height: 28),
+            _sectionLabel('About'),
+            _buildAboutCard(),
           ],
         ),
       ),
     );
   }
 
-  Widget _sectionTitle(String title) {
+  Widget _sectionLabel(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12, left: 2),
       child: Text(
         title.toUpperCase(),
         style: const TextStyle(
@@ -240,13 +130,229 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _infoRow(String label, String value) {
+  Widget _buildBackendCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Server Status',
+                    style: TextStyle(
+                        color: AppTheme.textSecondary, fontSize: 13)),
+                _isCheckingHealth
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppTheme.accent))
+                    : StatusBadge(
+                        label: _backendOnline == null
+                            ? '—'
+                            : (_backendOnline! ? 'Online' : 'Offline'),
+                        color: _backendOnline == null
+                            ? AppTheme.textMuted
+                            : (_backendOnline!
+                                ? AppTheme.accentGreen
+                                : AppTheme.accentRed),
+                      ),
+              ],
+            ),
+          ),
+          if (_healthData != null) ...[
+            Container(height: 1, color: AppTheme.border),
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Column(
+                children: [
+                  _infoRow(
+                      'Version', _healthData!['version']?.toString() ?? '—'),
+                  _infoRow('Extractor',
+                      _healthData!['extractor_engine']?.toString() ?? '—'),
+                  _infoRow('Sessions',
+                      _healthData!['active_sessions']?.toString() ?? '—'),
+                ],
+              ),
+            ),
+          ],
+          Container(height: 1, color: AppTheme.border),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _urlController,
+                  style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      color: AppTheme.textPrimary),
+                  decoration: const InputDecoration(
+                    labelText: 'Backend URL',
+                    hintText: 'http://10.0.2.2:8000',
+                  ),
+                  onSubmitted: (_) => _saveUrl(),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                          onPressed: _saveUrl,
+                          child: const Text('Save URL')),
+                    ),
+                    const SizedBox(width: 10),
+                    OutlinedButton.icon(
+                      onPressed: _checkHealth,
+                      icon: const Icon(Icons.refresh_rounded, size: 15),
+                      label: const Text('Test'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.bgElevated,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: Column(
+                    children: [
+                      _hintRow('Android emulator',
+                          'http://10.0.2.2:8000'),
+                      _hintRow(
+                          'iOS simulator', 'http://localhost:8000'),
+                      _hintRow('Physical device',
+                          'http://<LAN-IP>:8000'),
+                      _hintRow('AWS/deployed',
+                          'https://your-domain.com'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _hintRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: [
           SizedBox(
-            width: 90,
+            width: 120,
+            child: Text(label,
+                style: const TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 11,
+                    fontFamily: 'monospace')),
+          ),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11,
+                    fontFamily: 'monospace')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStorageCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: _clearAllHistory,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentRed.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.delete_sweep_outlined,
+                      color: AppTheme.accentRed, size: 20),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Clear All Chat History',
+                          style: TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 14)),
+                      SizedBox(height: 2),
+                      Text(
+                          'Remove all locally cached conversation history',
+                          style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 12)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right,
+                    color: AppTheme.textMuted, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAboutCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        children: [
+          _infoRow('App', 'Meeting Intelligence Hub'),
+          _infoRow('Version', '1.0.0'),
+          _infoRow('Backend', 'FastAPI + Groq/Ollama'),
+          _infoRow('Repo',
+              'github.com/Confusedaff/Smart_Communication_Hub'),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 72,
             child: Text(label,
                 style: const TextStyle(
                     color: AppTheme.textMuted, fontSize: 12)),
@@ -254,7 +360,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Expanded(
             child: Text(value,
                 style: const TextStyle(
-                    color: AppTheme.textPrimary, fontSize: 12)),
+                    color: AppTheme.textPrimary,
+                    fontSize: 12,
+                    fontFamily: 'monospace')),
           ),
         ],
       ),

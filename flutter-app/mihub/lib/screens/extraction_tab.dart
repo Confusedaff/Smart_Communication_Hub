@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../models/extraction_model.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/status_badge.dart';
 
 class ExtractionTab extends StatefulWidget {
   final String sessionId;
@@ -22,7 +21,8 @@ class _ExtractionTabState extends State<ExtractionTab> {
   ExtractionModel? _extraction;
   bool _isLoading = false;
   String? _error;
-  String? _lastEngine;
+  // Store raw JSON for debugging if text fields are empty
+  Map<String, dynamic>? _rawJson;
 
   @override
   void initState() {
@@ -43,14 +43,16 @@ class _ExtractionTabState extends State<ExtractionTab> {
     setState(() {
       _isLoading = true;
       _error = null;
+      _rawJson = null;
     });
     try {
-      final result =
-          await ApiService.extract(widget.sessionId, engine: widget.engine);
+      final result = await ApiService.extractWithRaw(
+          widget.sessionId,
+          engine: widget.engine);
       if (mounted) {
         setState(() {
-          _extraction = result;
-          _lastEngine = widget.engine;
+          _extraction = result.$1;
+          _rawJson = result.$2;
         });
       }
     } on ApiException catch (e) {
@@ -75,14 +77,35 @@ class _ExtractionTabState extends State<ExtractionTab> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const CircularProgressIndicator(color: AppTheme.accent),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: AppTheme.accentGlow,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppTheme.borderGlow),
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(
+                  color: AppTheme.accent, strokeWidth: 2.5),
+            ),
+          ),
           const SizedBox(height: 20),
+          const Text(
+            'Running extraction…',
+            style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.w600,
+                fontSize: 15),
+          ),
+          const SizedBox(height: 6),
           Text(
             widget.engine == 'llm'
-                ? 'Running AI extraction…\nThis may take up to 90s with Ollama.'
-                : 'Running NLP extraction…',
-            style: Theme.of(context).textTheme.bodyMedium,
-            textAlign: TextAlign.center,
+                ? 'This may take up to 90s with Ollama.'
+                : 'Running NLP pipeline…',
+            style: const TextStyle(
+                color: AppTheme.textMuted, fontSize: 13),
           ),
         ],
       ),
@@ -92,22 +115,35 @@ class _ExtractionTabState extends State<ExtractionTab> {
   Widget _buildError() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, color: AppTheme.accentRed, size: 48),
-            const SizedBox(height: 16),
-            Text('Extraction failed',
-                style: Theme.of(context).textTheme.titleMedium),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: AppTheme.accentRed.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.error_outline,
+                  color: AppTheme.accentRed, size: 32),
+            ),
+            const SizedBox(height: 20),
+            const Text('Extraction failed',
+                style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16)),
             const SizedBox(height: 8),
             Text(_error!,
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: const TextStyle(
+                    color: AppTheme.textSecondary, fontSize: 13),
                 textAlign: TextAlign.center),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: _runExtraction,
-              icon: const Icon(Icons.refresh_rounded),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
               label: const Text('Retry'),
             ),
           ],
@@ -123,27 +159,49 @@ class _ExtractionTabState extends State<ExtractionTab> {
       color: AppTheme.accent,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildStatsRow(ex),
-            const SizedBox(height: 16),
-            _buildSummaryCard(ex.summary),
-            const SizedBox(height: 16),
-            _buildDecisionsSection(ex.decisions),
-            const SizedBox(height: 16),
-            _buildActionItemsSection(ex.actionItems),
-            const SizedBox(height: 16),
-            if (ex.timing != null) _buildTimingCard(ex.timing!),
+            const SizedBox(height: 20),
+            if (ex.summary.isNotEmpty) ...[
+              _buildSummaryCard(ex.summary),
+              const SizedBox(height: 20),
+            ],
+            _buildSection(
+              title: 'Decisions',
+              count: ex.decisions.length,
+              color: AppTheme.accent,
+              children: ex.decisions.isEmpty
+                  ? [_emptyState('No decisions found')]
+                  : ex.decisions
+                      .map((d) => _decisionCard(d))
+                      .toList(),
+            ),
+            const SizedBox(height: 20),
+            _buildSection(
+              title: 'Action Items',
+              count: ex.actionItems.length,
+              color: AppTheme.accentGreen,
+              children: ex.actionItems.isEmpty
+                  ? [_emptyState('No action items found')]
+                  : ex.actionItems
+                      .map((a) => _actionCard(a))
+                      .toList(),
+            ),
+            if (ex.timing != null) ...[
+              const SizedBox(height: 16),
+              _buildTimingCard(ex.timing!),
+            ],
             const SizedBox(height: 8),
             Center(
               child: TextButton.icon(
                 onPressed: _runExtraction,
-                icon: const Icon(Icons.refresh_rounded, size: 16),
+                icon: const Icon(Icons.refresh_rounded, size: 15),
                 label: const Text('Re-extract'),
                 style: TextButton.styleFrom(
-                    foregroundColor: AppTheme.textSecondary),
+                    foregroundColor: AppTheme.textMuted),
               ),
             ),
           ],
@@ -155,39 +213,47 @@ class _ExtractionTabState extends State<ExtractionTab> {
   Widget _buildStatsRow(ExtractionModel ex) {
     return Row(
       children: [
-        _statChip('${ex.decisions.length}', 'Decisions', AppTheme.accent),
-        const SizedBox(width: 8),
-        _statChip(
-            '${ex.actionItems.length}', 'Actions', AppTheme.accentGreen),
-        const SizedBox(width: 8),
-        _statChip(
-            '${ex.uniqueOwners}', 'Owners', AppTheme.accentAmber),
-        const SizedBox(width: 8),
-        _statChip(
-            '${ex.itemsWithDeadlines}', 'Deadlines', AppTheme.accentRed),
+        _statChip('${ex.decisions.length}', 'Decisions',
+            AppTheme.accent, Icons.check_circle_outline),
+        const SizedBox(width: 10),
+        _statChip('${ex.actionItems.length}', 'Actions',
+            AppTheme.accentGreen, Icons.task_alt_outlined),
+        const SizedBox(width: 10),
+        _statChip('${ex.uniqueOwners}', 'Owners',
+            AppTheme.accentPurple, Icons.person_outline),
+        const SizedBox(width: 10),
+        _statChip('${ex.itemsWithDeadlines}', 'Deadlines',
+            AppTheme.accentAmber, Icons.schedule_outlined),
       ],
     );
   }
 
-  Widget _statChip(String value, String label, Color color) {
+  Widget _statChip(
+      String value, String label, Color color, IconData icon) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.25)),
+          color: color.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.2)),
         ),
         child: Column(
           children: [
+            Icon(icon, size: 16, color: color.withOpacity(0.7)),
+            const SizedBox(height: 6),
             Text(value,
                 style: TextStyle(
                     color: color,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800)),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    height: 1)),
+            const SizedBox(height: 4),
             Text(label,
                 style: const TextStyle(
-                    color: AppTheme.textMuted, fontSize: 10)),
+                    color: AppTheme.textMuted,
+                    fontSize: 10,
+                    letterSpacing: 0.3)),
           ],
         ),
       ),
@@ -195,82 +261,78 @@ class _ExtractionTabState extends State<ExtractionTab> {
   }
 
   Widget _buildSummaryCard(String summary) {
-    if (summary.isEmpty) return const SizedBox();
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.summarize_outlined,
-                    size: 16, color: AppTheme.accent),
-                SizedBox(width: 8),
-                Text('Executive Summary',
-                    style: TextStyle(
-                        color: AppTheme.accent,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13)),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(summary,
-                style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 14,
-                    height: 1.6)),
-          ],
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppTheme.accentGlow, AppTheme.bgCard],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderGlow),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.auto_awesome_outlined,
+                  size: 15, color: AppTheme.accent),
+              SizedBox(width: 8),
+              Text('Executive Summary',
+                  style: TextStyle(
+                      color: AppTheme.accent,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      letterSpacing: 0.5)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(summary,
+              style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  height: 1.7)),
+        ],
       ),
     );
   }
 
-  Widget _buildDecisionsSection(List<DecisionItem> decisions) {
+  Widget _buildSection({
+    required String title,
+    required int count,
+    required Color color,
+    required List<Widget> children,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionHeader('Decisions', decisions.length, AppTheme.accent),
-        const SizedBox(height: 8),
-        if (decisions.isEmpty)
-          _emptyState('No decisions found')
-        else
-          ...decisions.map((d) => _decisionCard(d)),
-      ],
-    );
-  }
-
-  Widget _buildActionItemsSection(List<ActionItem> actions) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionHeader('Action Items', actions.length, AppTheme.accentGreen),
-        const SizedBox(height: 8),
-        if (actions.isEmpty)
-          _emptyState('No action items found')
-        else
-          ...actions.map((a) => _actionCard(a)),
-      ],
-    );
-  }
-
-  Widget _sectionHeader(String title, int count, Color color) {
-    return Row(
-      children: [
-        Text(title,
-            style: TextStyle(
-                color: color, fontWeight: FontWeight.w700, fontSize: 15)),
-        const SizedBox(width: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Text('$count',
-              style: TextStyle(
-                  color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+        Row(
+          children: [
+            Text(title,
+                style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15)),
+            const SizedBox(width: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text('$count',
+                  style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ],
         ),
+        const SizedBox(height: 12),
+        ...children,
       ],
     );
   }
@@ -280,175 +342,260 @@ class _ExtractionTabState extends State<ExtractionTab> {
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Text(msg,
           style: const TextStyle(
-              color: AppTheme.textMuted, fontStyle: FontStyle.italic)),
+              color: AppTheme.textMuted,
+              fontStyle: FontStyle.italic)),
     );
   }
 
   Widget _decisionCard(DecisionItem d) {
-    return Card(
+    // Fallback: if decision text is empty, show placeholder
+    final displayText = d.decision.isNotEmpty
+        ? d.decision
+        : '(No decision text — check API field names)';
+
+    return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: AppTheme.accent.withOpacity(0.25)),
+                ),
+                child: Text('${d.id}',
+                    style: const TextStyle(
+                        color: AppTheme.accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  displayText,
+                  style: TextStyle(
+                    color: d.decision.isNotEmpty
+                        ? AppTheme.textPrimary
+                        : AppTheme.accentAmber,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 14,
+                    height: 1.55,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (d.madeBy.isNotEmpty) ...[
+            const SizedBox(height: 10),
             Row(
               children: [
                 Container(
-                  width: 24,
-                  height: 24,
-                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: AppTheme.accent.withOpacity(0.15),
+                    color: AppTheme.bgElevated,
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Text('${d.id}',
-                      style: const TextStyle(
-                          color: AppTheme.accent,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(d.decision,
-                      style: const TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 14)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.person_outline,
+                          size: 11, color: AppTheme.textMuted),
+                      const SizedBox(width: 4),
+                      Text(d.madeBy,
+                          style: const TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
                 ),
               ],
             ),
-            if (d.madeBy.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Icon(Icons.person_outline,
-                      size: 13, color: AppTheme.textMuted),
-                  const SizedBox(width: 4),
-                  Text(d.madeBy,
-                      style: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 12)),
-                ],
-              ),
-            ],
-            if (d.evidence.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppTheme.bgDeep,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppTheme.border),
-                ),
-                child: Text(
-                  '"${d.evidence}"',
-                  style: const TextStyle(
-                      color: AppTheme.textMuted,
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                      height: 1.5),
-                ),
-              ),
-            ],
           ],
-        ),
+          if (d.evidence.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(
+                color: AppTheme.bgDeep,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Text(
+                '"${d.evidence}"',
+                style: const TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                    height: 1.5),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
 
   Widget _actionCard(ActionItem a) {
-    return Card(
+    final displayText = a.task.isNotEmpty
+        ? a.task
+        : '(No task text — check API field names)';
+
+    return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppTheme.accentGreen.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text('${a.id}',
-                      style: const TextStyle(
-                          color: AppTheme.accentGreen,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(a.task,
-                      style: const TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 14)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                if (a.owner.isNotEmpty) ...[
-                  const Icon(Icons.person_outline,
-                      size: 13, color: AppTheme.textMuted),
-                  const SizedBox(width: 4),
-                  Text(a.owner,
-                      style: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 12)),
-                  const SizedBox(width: 12),
-                ],
-                if (a.deadline.isNotEmpty) ...[
-                  const Icon(Icons.schedule_outlined,
-                      size: 13, color: AppTheme.accentAmber),
-                  const SizedBox(width: 4),
-                  Text(a.deadline,
-                      style: const TextStyle(
-                          color: AppTheme.accentAmber, fontSize: 12)),
-                ],
-              ],
-            ),
-            if (a.evidence.isNotEmpty) ...[
-              const SizedBox(height: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: AppTheme.bgDeep,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppTheme.border),
+                  color: AppTheme.accentGreen.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: AppTheme.accentGreen.withOpacity(0.25)),
                 ),
+                child: Text('${a.id}',
+                    style: const TextStyle(
+                        color: AppTheme.accentGreen,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
                 child: Text(
-                  '"${a.evidence}"',
-                  style: const TextStyle(
-                      color: AppTheme.textMuted,
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                      height: 1.5),
+                  displayText,
+                  style: TextStyle(
+                    color: a.task.isNotEmpty
+                        ? AppTheme.textPrimary
+                        : AppTheme.accentAmber,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 14,
+                    height: 1.55,
+                  ),
                 ),
               ),
             ],
+          ),
+          if (a.owner.isNotEmpty || a.deadline.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                if (a.owner.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.bgElevated,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.person_outline,
+                            size: 11, color: AppTheme.textMuted),
+                        const SizedBox(width: 4),
+                        Text(a.owner,
+                            style: const TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+                if (a.owner.isNotEmpty && a.deadline.isNotEmpty)
+                  const SizedBox(width: 8),
+                if (a.deadline.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accentAmber.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color: AppTheme.accentAmber.withOpacity(0.2)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.schedule_outlined,
+                            size: 11,
+                            color: AppTheme.accentAmber),
+                        const SizedBox(width: 4),
+                        Text(a.deadline,
+                            style: const TextStyle(
+                                color: AppTheme.accentAmber,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
           ],
-        ),
+          if (a.evidence.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(
+                color: AppTheme.bgDeep,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Text(
+                '"${a.evidence}"',
+                style: const TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                    height: 1.5),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
 
   Widget _buildTimingCard(ExtractionTiming timing) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       decoration: BoxDecoration(
         color: AppTheme.bgElevated,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppTheme.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.timer_outlined, size: 14, color: AppTheme.textMuted),
+          const Icon(Icons.timer_outlined,
+              size: 13, color: AppTheme.textMuted),
           const SizedBox(width: 6),
           Text(
             '${timing.elapsedSeconds.toStringAsFixed(1)}s via ${timing.backend} (${timing.engine})',

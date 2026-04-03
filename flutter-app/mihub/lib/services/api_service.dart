@@ -64,6 +64,21 @@ class ApiService {
     throw ApiException('Extraction failed: $error');
   }
 
+  /// Returns both the parsed model AND the raw decoded JSON map.
+  static Future<(ExtractionModel, Map<String, dynamic>)> extractWithRaw(
+      String sessionId,
+      {String engine = 'llm'}) async {
+    final response = await http
+        .get(Uri.parse('$_baseUrl/sessions/$sessionId/extract?engine=$engine'))
+        .timeout(const Duration(minutes: 3));
+    if (response.statusCode == 200) {
+      final rawMap = json.decode(response.body) as Map<String, dynamic>;
+      return (ExtractionModel.fromJson(rawMap), rawMap);
+    }
+    final error = _parseError(response.body);
+    throw ApiException('Extraction failed: $error');
+  }
+
   // ── Chat ──────────────────────────────────────────────────────────────────
 
   static Future<ChatResponse> sendMessage(

@@ -1,31 +1,35 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Core palette
-  static const Color bgDeep = Color(0xFF0A0E1A);
-  static const Color bgCard = Color(0xFF111827);
-  static const Color bgElevated = Color(0xFF1A2235);
-  static const Color accent = Color(0xFF3B82F6); // electric blue
-  static const Color accentLight = Color(0xFF60A5FA);
-  static const Color accentGreen = Color(0xFF10B981);
-  static const Color accentAmber = Color(0xFFF59E0B);
-  static const Color accentRed = Color(0xFFEF4444);
-  static const Color textPrimary = Color(0xFFF1F5F9);
-  static const Color textSecondary = Color(0xFF94A3B8);
-  static const Color textMuted = Color(0xFF475569);
-  static const Color border = Color(0xFF1E293B);
-  static const Color borderBright = Color(0xFF334155);
+  // Core palette — deeper, richer, more refined
+  static const Color bgDeep = Color(0xFF060B14);
+  static const Color bgCard = Color(0xFF0D1626);
+  static const Color bgElevated = Color(0xFF152033);
+  static const Color bgSurface = Color(0xFF1C2B42);
+  static const Color accent = Color(0xFF4F8EF7);
+  static const Color accentLight = Color(0xFF7FB3FF);
+  static const Color accentGlow = Color(0xFF1A3A6E);
+  static const Color accentGreen = Color(0xFF22D3A5);
+  static const Color accentAmber = Color(0xFFFBBF24);
+  static const Color accentRed = Color(0xFFFF5C6A);
+  static const Color accentPurple = Color(0xFFA78BFA);
+  static const Color textPrimary = Color(0xFFF0F6FF);
+  static const Color textSecondary = Color(0xFF8BA4C4);
+  static const Color textMuted = Color(0xFF3D5A80);
+  static const Color border = Color(0xFF162035);
+  static const Color borderBright = Color(0xFF243554);
+  static const Color borderGlow = Color(0xFF2A4A80);
 
-  // Speaker colours (cycle through for colour-coding)
+  // Speaker colours
   static const List<Color> speakerColors = [
-    Color(0xFF3B82F6),
-    Color(0xFF8B5CF6),
-    Color(0xFF10B981),
-    Color(0xFFF59E0B),
-    Color(0xFFEF4444),
-    Color(0xFFEC4899),
-    Color(0xFF06B6D4),
-    Color(0xFF84CC16),
+    Color(0xFF4F8EF7),
+    Color(0xFFA78BFA),
+    Color(0xFF22D3A5),
+    Color(0xFFFBBF24),
+    Color(0xFFFF5C6A),
+    Color(0xFFF472B6),
+    Color(0xFF22D3EE),
+    Color(0xFF86EFAC),
   ];
 
   static Color speakerColor(int index) =>
@@ -51,7 +55,7 @@ class AppTheme {
         centerTitle: false,
         titleTextStyle: TextStyle(
           fontFamily: 'monospace',
-          fontSize: 18,
+          fontSize: 17,
           fontWeight: FontWeight.w700,
           color: textPrimary,
           letterSpacing: -0.5,
@@ -61,7 +65,7 @@ class AppTheme {
         color: bgCard,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: border, width: 1),
         ),
       ),
@@ -69,15 +73,15 @@ class AppTheme {
         filled: true,
         fillColor: bgElevated,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: accent, width: 1.5),
         ),
         hintStyle: const TextStyle(color: textMuted),
@@ -94,15 +98,13 @@ class AppTheme {
             fontWeight: FontWeight.w700,
             letterSpacing: -0.5),
         titleLarge: TextStyle(
-            color: textPrimary,
-            fontWeight: FontWeight.w600,
-            fontSize: 18),
+            color: textPrimary, fontWeight: FontWeight.w600, fontSize: 18),
         titleMedium: TextStyle(
-            color: textPrimary,
-            fontWeight: FontWeight.w500,
-            fontSize: 15),
-        bodyLarge: TextStyle(color: textPrimary, fontSize: 15),
-        bodyMedium: TextStyle(color: textSecondary, fontSize: 13),
+            color: textPrimary, fontWeight: FontWeight.w500, fontSize: 15),
+        bodyLarge:
+            TextStyle(color: textPrimary, fontSize: 15, height: 1.6),
+        bodyMedium: TextStyle(
+            color: textSecondary, fontSize: 13, height: 1.5),
         labelSmall: TextStyle(
             color: textMuted, fontSize: 11, letterSpacing: 0.8),
       ),
@@ -112,10 +114,11 @@ class AppTheme {
           foregroundColor: Colors.white,
           padding:
               const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
           textStyle:
               const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+          elevation: 0,
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -124,8 +127,8 @@ class AppTheme {
           side: const BorderSide(color: borderBright),
           padding:
               const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
         ),
       ),
       dividerTheme:
@@ -136,7 +139,7 @@ class AppTheme {
         labelStyle: const TextStyle(color: textPrimary, fontSize: 13),
         side: const BorderSide(color: border),
         shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       tabBarTheme: const TabBarThemeData(
         labelColor: accent,
@@ -146,11 +149,32 @@ class AppTheme {
         ),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: bgElevated,
+        backgroundColor: bgSurface,
         contentTextStyle: const TextStyle(color: textPrimary),
         shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: bgCard,
+        indicatorColor: accent.withOpacity(0.15),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const IconThemeData(color: accent, size: 22);
+          }
+          return const IconThemeData(color: textMuted, size: 22);
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const TextStyle(
+                color: accent, fontSize: 11, fontWeight: FontWeight.w600);
+          }
+          return const TextStyle(color: textMuted, fontSize: 11);
+        }),
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.black54,
+        elevation: 8,
+        height: 72,
       ),
     );
   }
