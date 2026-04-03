@@ -171,18 +171,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               Expanded(
                 child: _ThemeOption(
-                  label: 'Ocean Blue',
-                  description: 'Original dark blue',
-                  accentColor: blueTokens.accent,
-                  bgColor: blueTokens.bgDeep,
-                  cardColor: blueTokens.bgCard,
-                  isSelected: current == AppThemeMode.blue,
-                  onTap: () => notifier.setMode(AppThemeMode.blue),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _ThemeOption(
                   label: 'Terminal Green',
                   description: 'Mint green dark',
                   accentColor: greenTokens.accent,
@@ -190,6 +178,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   cardColor: greenTokens.bgCard,
                   isSelected: current == AppThemeMode.green,
                   onTap: () => notifier.setMode(AppThemeMode.green),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _ThemeOption(
+                  label: 'Ocean Blue',
+                  description: 'Original dark blue',
+                  accentColor: blueTokens.accent,
+                  bgColor: blueTokens.bgDeep,
+                  cardColor: blueTokens.bgCard,
+                  isSelected: current == AppThemeMode.blue,
+                  onTap: () => notifier.setMode(AppThemeMode.blue),
                 ),
               ),
             ],
