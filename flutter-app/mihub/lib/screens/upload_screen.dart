@@ -30,7 +30,7 @@ class _UploadScreenState extends State<UploadScreen>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnim;
   final TextEditingController _urlController =
-      TextEditingController(text: ApiService.baseUrl);
+      TextEditingController(text: 'http://100.95.213.57:8000');
 
   @override
   void initState() {
@@ -486,7 +486,7 @@ class _UploadScreenState extends State<UploadScreen>
                   decoration: InputDecoration(
                     labelText: 'Backend URL',
                     labelStyle: TextStyle(color: t.textMuted),
-                    hintText: 'http://10.0.2.2:8000',
+                    hintText: 'http://100.95.213.57:8000',
                     isDense: true,
                   ),
                   onSubmitted: (_) => _saveUrlAndReconnect(),
@@ -527,9 +527,9 @@ class _UploadScreenState extends State<UploadScreen>
             spacing: 16,
             runSpacing: 4,
             children: [
-              _connectionHint(t, 'Emulator', 'http://10.0.2.2:8000'),
               _connectionHint(t, 'Tailscale',  'http://100.95.213.57:8000'),
-              _connectionHint(t, 'Device', 'http://<LAN-IP>:8000'),
+              _connectionHint(t, 'Emulator',   'http://10.0.2.2:8000'),
+              _connectionHint(t, 'Device LAN', 'http://<LAN-IP>:8000'),
             ],
           ),
         ],
