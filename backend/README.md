@@ -2,6 +2,23 @@
 
 A FastAPI backend that turns raw meeting transcripts (`.txt` / `.vtt`) into structured intelligence: decisions, action items, a summary, and a Q&A chatbot — all exportable as CSV or PDF.
 
+> The web frontend that connects to this backend is documented in [`web/README.md`](../web/README.md).
+
+---
+
+## UI Preview
+
+> These screenshots are from the React web frontend — see [`web/README.md`](../web/README.md) for frontend setup.
+
+**Extraction panel** — decisions and action items with speaker attribution, stats, and export buttons
+![Extraction panel](https://github.com/user-attachments/assets/9ad8b67d-409e-4674-91c0-73eaaf8cee36)
+
+**Chatbot panel** — Q&A over the transcript with citations and live response timing
+![Chatbot panel](https://github.com/user-attachments/assets/3ef3e029-6669-499b-988b-a703e28f8d43)
+
+**Transcript panel** — colour-coded speaker segments with full speaker legend
+![Transcript panel](https://github.com/user-attachments/assets/0a72e9ec-4f5a-4ce1-99af-b26563301e9f)
+
 ---
 
 ## Table of Contents
