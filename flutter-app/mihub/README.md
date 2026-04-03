@@ -483,7 +483,7 @@ flutter run
 
 ---
 
-## AWS Free Tier Hosting Guide
+<!-- ## AWS Free Tier Hosting Guide
 
 Yes — you can host both the backend and the web frontend on AWS Free Tier. Here is a complete, practical guide.
 
@@ -813,3 +813,4 @@ sudo systemctl restart mih-backend
 sudo systemctl status nginx
 sudo nginx -t   # test config syntax
 ```
+-->
