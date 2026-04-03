@@ -1,19 +1,5 @@
 """
 custom_extractor.py — Zero-LLM extraction engine using spaCy.
-
-Replaces extractor.py for the Decision & Action Item Extractor feature.
-The chatbot (chatbot.py) still uses Ollama — Q&A genuinely needs an LLM.
-
-Pipeline:
-  1. Sentence segmentation          (spaCy)
-  2. Sentence classification        (rule-based patterns → DECISION / ACTION / GENERAL)
-  3. Person / owner extraction      (spaCy NER  → PERSON entities)
-  4. Deadline extraction            (regex + spaCy DATE entities)
-  5. Summary generation             (extractive — top-scored sentences, no LLM)
-
-Install:
-    pip install spacy
-    python -m spacy download en_core_web_sm
 """
 
 import re
@@ -21,9 +7,7 @@ import spacy
 from collections import defaultdict
 
 
-# ── Load spaCy model once at import time ──────────────────────────────────────
-# en_core_web_sm is tiny (~12 MB), fast, runs on CPU, no GPU needed.
-# Falls back to a blank model if not installed (reduced accuracy).
+# ── Load spaCy model ──────────────────────────────────────────────────────────
 try:
     _nlp = spacy.load("en_core_web_sm")
 except OSError:
@@ -31,17 +15,19 @@ except OSError:
     warnings.warn(
         "spaCy model 'en_core_web_sm' not found. "
         "Run: python -m spacy download en_core_web_sm\n"
-        "Falling back to blank model — NER and date extraction will be limited.",
+        "Falling back to blank model — accuracy will be limited.",
         stacklevel=2,
     )
     _nlp = spacy.blank("en")
+    # Blank model has no sentencizer — add one so doc.sents works
+    if "sentencizer" not in _nlp.pipe_names:
+        _nlp.add_pipe("sentencizer")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SECTION 1 — Sentence Classification Patterns
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Patterns that strongly signal a DECISION was made
 _DECISION_PATTERNS = [
     r"\bwe('ve| have)? decided\b",
     r"\bit('s| is) decided\b",
@@ -62,7 +48,6 @@ _DECISION_PATTERNS = [
     r"\bmoved forward (with|on)\b",
 ]
 
-# Patterns that strongly signal an ACTION ITEM was assigned
 _ACTION_PATTERNS = [
     r"\bwill\b.{0,60}\b(by|before|until|due|deadline)\b",
     r"\bneeds? to\b",
@@ -90,20 +75,12 @@ _ACTION_RE   = [re.compile(p, re.IGNORECASE) for p in _ACTION_PATTERNS]
 
 
 def _classify_sentence(text: str) -> str:
-    """
-    Returns 'DECISION', 'ACTION', or 'GENERAL'.
-    Scoring: count matching patterns; highest wins (ties → GENERAL).
-    """
     d_score = sum(1 for r in _DECISION_RE if r.search(text))
     a_score = sum(1 for r in _ACTION_RE   if r.search(text))
-
     if d_score == 0 and a_score == 0:
         return "GENERAL"
     if d_score > a_score:
         return "DECISION"
-    if a_score > d_score:
-        return "ACTION"
-    # Tie: prefer action (more granular / more useful)
     return "ACTION"
 
 
@@ -111,32 +88,17 @@ def _classify_sentence(text: str) -> str:
 # SECTION 2 — Person / Owner Extraction
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Pronouns that imply ownership but can't be resolved to a name
-_FIRST_PERSON  = re.compile(r"\b(I|I'll|I've|I am|I will|me)\b", re.IGNORECASE)
-_SECOND_PERSON = re.compile(r"\b(you|you'll|your)\b", re.IGNORECASE)
+_FIRST_PERSON = re.compile(r"\b(I|I'll|I've|I am|I will|me)\b", re.IGNORECASE)
 
 
-def _extract_owner(sentence_text: str, doc, speaker: str | None) -> str | None:
-    """
-    Try to find who owns this action item:
-    1. spaCy PERSON entities in the sentence
-    2. "I will..." → speaker is the owner
-    3. "You should..." → other party
-    4. Speaker label from the segment
-    """
-    # spaCy named persons
+def _extract_owner(sentence_text: str, doc, speaker) -> str | None:
     persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
     if persons:
         return persons[0]
-
-    # First-person → speaker owns it
     if _FIRST_PERSON.search(sentence_text) and speaker:
         return speaker
-
-    # Fallback to speaker label
     if speaker:
         return speaker
-
     return None
 
 
@@ -145,13 +107,11 @@ def _extract_owner(sentence_text: str, doc, speaker: str | None) -> str | None:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 _DEADLINE_PATTERNS = [
-    # Explicit relative deadlines
     (re.compile(r"\bby\s+(end of (?:day|week|month|quarter|q[1-4]))\b", re.I), 1),
     (re.compile(r"\bby\s+((?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b", re.I), 1),
     (re.compile(r"\bby\s+((?:next\s+)?(?:week|month|quarter))\b", re.I), 1),
     (re.compile(r"\bby\s+(\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?)\b", re.I), 1),
     (re.compile(r"\bby\s+(tomorrow|today|eod|eow|asap)\b", re.I), 1),
-    (re.compile(r"\bdue\s+(?:by\s+|on\s+)?(.*?)(?:\.|,|$)", re.I), 2),
     (re.compile(r"\bbefore\s+((?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday|the\s+meeting|end of))\b", re.I), 1),
     (re.compile(r"\b(asap|immediately|urgently|as soon as possible)\b", re.I), 0),
     (re.compile(r"\bdeadline(?:\s+is)?\s*:?\s*(.*?)(?:\.|,|$)", re.I), 2),
@@ -160,11 +120,6 @@ _DEADLINE_PATTERNS = [
 
 
 def _extract_deadline(sentence_text: str, doc) -> str | None:
-    """
-    Try regex patterns first (most reliable), then fall back to spaCy DATE entities.
-    Returns a human-readable deadline string or None.
-    """
-    # Regex patterns
     for pattern, group_idx in _DEADLINE_PATTERNS:
         m = pattern.search(sentence_text)
         if m:
@@ -175,20 +130,17 @@ def _extract_deadline(sentence_text: str, doc) -> str | None:
             except IndexError:
                 return m.group(0).strip(" .,;").capitalize()
 
-    # spaCy DATE entities as fallback
     dates = [ent.text for ent in doc.ents if ent.label_ == "DATE"]
     if dates:
-        # Filter out vague temporal references
         vague = {"the meeting", "the call", "today", "now", "then", "recently", "later"}
         specific = [d for d in dates if d.lower() not in vague and len(d) > 3]
         if specific:
             return specific[0].capitalize()
-
     return None
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SECTION 4 — Extractive Summary (no LLM)
+# SECTION 4 — Extractive Summary
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 _STOP_WORDS = {
@@ -199,8 +151,7 @@ _STOP_WORDS = {
     "there","here","just","been","has","its","also","about","which","what",
 }
 
-def _score_sentence(sentence: str, word_freq: dict[str, int]) -> float:
-    """Simple TF-based importance score for extractive summarisation."""
+def _score_sentence(sentence: str, word_freq: dict) -> float:
     words = re.findall(r"\b[a-z]+\b", sentence.lower())
     content_words = [w for w in words if w not in _STOP_WORDS and len(w) > 3]
     if not content_words:
@@ -208,56 +159,32 @@ def _score_sentence(sentence: str, word_freq: dict[str, int]) -> float:
     return sum(word_freq.get(w, 0) for w in content_words) / len(content_words)
 
 
-def _build_summary(sentences: list[str], max_sentences: int = 3) -> str:
-    """
-    Extractive summary: score sentences by word frequency, pick the top N.
-    Returns them in original order (not by score) for readability.
-    """
+def _build_summary(sentences: list, max_sentences: int = 3) -> str:
     if not sentences:
         return ""
-
-    # Build word frequency map
     all_words = re.findall(r"\b[a-z]+\b", " ".join(sentences).lower())
-    word_freq: dict[str, int] = defaultdict(int)
+    word_freq: dict = defaultdict(int)
     for w in all_words:
         if w not in _STOP_WORDS and len(w) > 3:
             word_freq[w] += 1
-
-    # Score each sentence
     scored = [(i, s, _score_sentence(s, word_freq)) for i, s in enumerate(sentences)]
-    # Keep only non-trivial sentences (len > 20 chars)
     scored = [(i, s, sc) for i, s, sc in scored if len(s.strip()) > 20]
     scored.sort(key=lambda x: x[2], reverse=True)
-
     top_indices = sorted(i for i, _, _ in scored[:max_sentences])
-    top_sentences = [sentences[i] for i in top_indices]
-
-    return " ".join(top_sentences)
+    return " ".join(sentences[i] for i in top_indices)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SECTION 5 — Public API  (same interface as extractor.py)
+# SECTION 5 — Public API
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-async def extract(raw_text: str, segments: list[dict]) -> dict:
-    """
-    Drop-in async replacement for extractor.extract().
-    No Ollama, no network, no GPU — pure NLP.
+async def extract(raw_text: str, segments: list) -> dict:
+    """Drop-in async replacement for extractor.extract(). No Ollama needed."""
 
-    Returns:
-    {
-      "decisions":    [{ id, description, made_by, context }],
-      "action_items": [{ id, what, who, by_when, context }],
-      "summary":      "..."
-    }
-    """
-    # Build a speaker lookup: sentence_start_char → speaker name
-    # We'll match segments to sentences later by text overlap
     speaker_map = _build_speaker_map(segments)
 
-    # Run spaCy over the full text
-    doc = _nlp(raw_text[:50_000])   # cap to avoid memory issues on huge files
-
+    # Process each segment individually to avoid sentence boundary issues
+    # with the blank model fallback
     decisions    = []
     action_items = []
     all_sentences = []
@@ -265,46 +192,46 @@ async def extract(raw_text: str, segments: list[dict]) -> dict:
     dec_id = 1
     act_id = 1
 
-    for sent in doc.sents:
-        text = sent.text.strip()
-        if len(text) < 15:          # skip noise / very short fragments
+    for seg in segments:
+        text    = seg.get("text", "").strip()
+        speaker = seg.get("speaker")
+        if not text or len(text) < 10:
             continue
 
-        all_sentences.append(text)
+        doc = _nlp(text)
 
-        label = _classify_sentence(text)
+        # Iterate sentences — if sentencizer gives only one sent, that's fine
+        for sent in doc.sents:
+            sent_text = sent.text.strip()
+            if len(sent_text) < 10:
+                continue
 
-        # Per-sentence spaCy doc for NER
-        sent_doc = _nlp(text)
+            all_sentences.append(sent_text)
+            label    = _classify_sentence(sent_text)
+            sent_doc = _nlp(sent_text)
 
-        # Guess the speaker for this sentence
-        speaker = _find_speaker(text, speaker_map)
+            if label == "DECISION":
+                persons = [e.text for e in sent_doc.ents if e.label_ == "PERSON"]
+                made_by = persons[0] if persons else speaker
+                decisions.append({
+                    "id":          dec_id,
+                    "description": _clean(sent_text),
+                    "made_by":     made_by,
+                    "context":     sent_text,
+                })
+                dec_id += 1
 
-        if label == "DECISION":
-            # Who drove this decision?
-            persons = [e.text for e in sent_doc.ents if e.label_ == "PERSON"]
-            made_by = persons[0] if persons else speaker
-
-            decisions.append({
-                "id":          dec_id,
-                "description": _clean(text),
-                "made_by":     made_by,
-                "context":     text,
-            })
-            dec_id += 1
-
-        elif label == "ACTION":
-            owner    = _extract_owner(text, sent_doc, speaker)
-            deadline = _extract_deadline(text, sent_doc)
-
-            action_items.append({
-                "id":      act_id,
-                "what":    _clean(text),
-                "who":     owner,
-                "by_when": deadline,
-                "context": text,
-            })
-            act_id += 1
+            elif label == "ACTION":
+                owner    = _extract_owner(sent_text, sent_doc, speaker)
+                deadline = _extract_deadline(sent_text, sent_doc)
+                action_items.append({
+                    "id":      act_id,
+                    "what":    _clean(sent_text),
+                    "who":     owner,
+                    "by_when": deadline,
+                    "context": sent_text,
+                })
+                act_id += 1
 
     summary = _build_summary(all_sentences, max_sentences=4)
 
@@ -316,29 +243,18 @@ async def extract(raw_text: str, segments: list[dict]) -> dict:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SECTION 6 — Internal helpers
+# SECTION 6 — Helpers
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def _build_speaker_map(segments: list[dict]) -> list[tuple[str, str]]:
-    """
-    Build a list of (text_snippet, speaker) pairs so we can guess
-    which speaker said a given sentence.
-    """
-    pairs = []
-    for seg in segments:
-        speaker = seg.get("speaker")
-        text    = seg.get("text", "").strip()
-        if speaker and text:
-            # Use the first 60 chars as a fingerprint
-            pairs.append((text[:60].lower(), speaker))
-    return pairs
+def _build_speaker_map(segments: list) -> list:
+    return [
+        (seg.get("text", "")[:60].lower(), seg.get("speaker"))
+        for seg in segments
+        if seg.get("speaker") and seg.get("text", "").strip()
+    ]
 
 
-def _find_speaker(sentence: str, speaker_map: list[tuple[str, str]]) -> str | None:
-    """
-    Try to find which speaker said this sentence by substring matching
-    against the segment fingerprints.
-    """
+def _find_speaker(sentence: str, speaker_map: list):
     sentence_lower = sentence.lower()
     for fingerprint, speaker in speaker_map:
         if fingerprint[:30] in sentence_lower or sentence_lower[:30] in fingerprint:
@@ -347,12 +263,9 @@ def _find_speaker(sentence: str, speaker_map: list[tuple[str, str]]) -> str | No
 
 
 def _clean(text: str) -> str:
-    """Lightly clean a sentence for display."""
     text = text.strip()
-    # Capitalise first letter
     if text:
         text = text[0].upper() + text[1:]
-    # Ensure terminal punctuation
     if text and text[-1] not in ".!?":
         text += "."
     return text
