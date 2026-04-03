@@ -9,7 +9,7 @@ A FastAPI backend that turns raw meeting transcripts (`.txt` / `.vtt`) into stru
 - [How It Works](#how-it-works)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
-- [Configuration](#configuration)
+- [Configuration](#configuration-)
 - [Running the Server](#running-the-server)
 - [API Reference](#api-reference)
 - [Extractor Engines](#extractor-engines)
@@ -107,7 +107,7 @@ source venv/bin/activate
 venv\Scripts\activate.bat
 
 # Windows (PowerShell):
-.\venv\Scripts\Activate   
+venv\Scripts\Activate.ps1
 ```
 
 ### 3. Install Python dependencies
@@ -163,6 +163,50 @@ EXTRACTOR=llm
 ```
 
 > **Which LLM backend is active?** The backend automatically picks **Groq** if `GROQ_API_KEY` is set, otherwise falls back to **Ollama**. If one fails during a request, it retries on the other automatically.
+
+---
+
+## Configuration ⚙
+
+All configuration is done through the `.env` file in the `backend/` directory. Full reference of every available variable:
+
+| Variable | Default | Description |
+|---|---|---|
+| `GROQ_API_KEY` | _(empty)_ | Your Groq cloud API key. Get one free at [console.groq.com](https://console.groq.com). If set, Groq is used instead of Ollama. |
+| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model to use. Other options: `llama-3.1-8b-instant`, `mixtral-8x7b-32768`. |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | URL where Ollama is running. Change if Ollama is on a different machine or port. |
+| `OLLAMA_MODEL` | `gemma2:9b` | Local Ollama model to use. Must be pulled first with `ollama pull <model>`. |
+| `OLLAMA_TIMEOUT` | `600` | Seconds before an Ollama request times out. Increase for slower hardware or larger models. |
+| `EXTRACTOR` | `llm` | Default extraction engine. `"llm"` = Groq/Ollama, `"nlp"` = spaCy offline. Can be overridden per-request via `?engine=`. |
+
+### Example `.env` configurations
+
+**Groq only (fastest setup):**
+```bash
+GROQ_API_KEY=gsk_your_key_here
+EXTRACTOR=llm
+```
+
+**Ollama only (fully offline):**
+```bash
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=gemma2:9b
+OLLAMA_TIMEOUT=600
+EXTRACTOR=llm
+```
+
+**spaCy NLP only (no LLM at all):**
+```bash
+EXTRACTOR=nlp
+```
+
+**Both configured (Groq used first, Ollama as automatic fallback):**
+```bash
+GROQ_API_KEY=gsk_your_key_here
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=gemma2:9b
+EXTRACTOR=llm
+```
 
 ---
 
