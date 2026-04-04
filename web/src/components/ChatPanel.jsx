@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { api } from "../services/api";
 import LLMTimingBadge from "./LLMTimingBadge";
 
@@ -10,37 +10,72 @@ const WELCOME = {
   citations: [],
 };
 
-function loadMessages(sessionId) {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY(sessionId));
-    if (raw) return JSON.parse(raw);
-  } catch (_) { /* ignore */ }
-  return [WELCOME];
-}
-
 function saveMessages(sessionId, messages) {
   try {
     localStorage.setItem(STORAGE_KEY(sessionId), JSON.stringify(messages));
   } catch (_) { /* ignore */ }
 }
 
+function getCachedMessages(sessionId) {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY(sessionId));
+    if (raw) return JSON.parse(raw);
+  } catch (_) { /* ignore */ }
+  return null;
+}
+
 export default function ChatPanel({ sessionId }) {
-  const [messages, setMessages] = useState(() => loadMessages(sessionId));
-  const [input,    setInput]    = useState("");
-  const [loading,  setLoading]  = useState(false);
-  const [lastTiming, setLastTiming] = useState(null);  // {elapsed_seconds, backend}
+  const [messages,   setMessages]   = useState([WELCOME]);
+  const [input,      setInput]      = useState("");
+  const [loading,    setLoading]    = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [lastTiming, setLastTiming] = useState(null);
+
+  const activeSessionRef = useRef(sessionId);
   const bottomRef = useRef();
 
-  /* Persist messages whenever they change */
+  /* On session switch: fetch history from backend (source of truth) */
   useEffect(() => {
-    saveMessages(sessionId, messages);
-  }, [sessionId, messages]);
-
-  /* Re-load if sessionId switches (different transcript opened) */
-  useEffect(() => {
-    setMessages(loadMessages(sessionId));
+    activeSessionRef.current = sessionId;
+    setMessages([WELCOME]);
+    setInput("");
     setLastTiming(null);
+
+    // Show cached messages instantly while backend loads
+    const cached = getCachedMessages(sessionId);
+    if (cached && cached.length > 0) {
+      setMessages(cached);
+    }
+
+    // Always fetch from backend to get the real history
+    setLoadingHistory(true);
+    api.chatHistory(sessionId)
+      .then((data) => {
+        if (activeSessionRef.current !== sessionId) return; // switched away
+        const hist = (data.history || [])
+          .filter((h) => h.role === "user" || h.role === "assistant")
+          .map((h) => ({ role: h.role, content: h.content, citations: h.citations || [] }));
+        const msgs = [WELCOME, ...hist];
+        setMessages(msgs);
+        saveMessages(sessionId, msgs); // update cache with authoritative data
+      })
+      .catch(() => {
+        if (activeSessionRef.current !== sessionId) return;
+        // Fall back to cache if backend unreachable
+        const cached2 = getCachedMessages(sessionId);
+        setMessages(cached2 && cached2.length > 0 ? cached2 : [WELCOME]);
+      })
+      .finally(() => {
+        if (activeSessionRef.current === sessionId) setLoadingHistory(false);
+      });
   }, [sessionId]);
+
+  /* Persist messages — only for the active session */
+  useEffect(() => {
+    if (activeSessionRef.current !== sessionId) return;
+    if (loadingHistory) return; // don't overwrite cache while fetching
+    saveMessages(sessionId, messages);
+  }, [sessionId, messages, loadingHistory]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -89,9 +124,8 @@ export default function ChatPanel({ sessionId }) {
       <div className="chat-topbar">
         <span className="chat-title">💬 Transcript Q&amp;A</span>
         <div className="chat-topbar-right">
-          {/* Live timing badge — shows expected wait for next query */}
           <LLMTimingBadge task="chat" />
-          <button className="clear-btn" onClick={clearHistory}>Clear history</button>
+          <button className="clear-btn" onClick={clearHistory} disabled={loading}>Clear history</button>
         </div>
       </div>
 
@@ -104,7 +138,6 @@ export default function ChatPanel({ sessionId }) {
             <div className="message-body">
               <p className="message-text">{msg.content}</p>
 
-              {/* Per-message timing (shown on assistant messages that have it) */}
               {msg.timing?.elapsed_seconds != null && (
                 <span className="message-timing">
                   {msg.timing.elapsed_seconds}s · {msg.timing.backend}
@@ -116,7 +149,7 @@ export default function ChatPanel({ sessionId }) {
                   <span className="citations-label">Sources</span>
                   {msg.citations.map((c, ci) => (
                     <div className="citation" key={ci}>
-                      {c.speaker  && <span className="citation-speaker">{c.speaker}</span>}
+                      {c.speaker   && <span className="citation-speaker">{c.speaker}</span>}
                       {c.timestamp && <span className="citation-ts">{c.timestamp}</span>}
                       <span className="citation-excerpt">"{c.excerpt}"</span>
                     </div>
@@ -127,7 +160,16 @@ export default function ChatPanel({ sessionId }) {
           </div>
         ))}
 
-        {loading && (
+        {loadingHistory && (
+          <div className="message assistant">
+            <div className="message-avatar">AI</div>
+            <div className="message-body">
+              <div className="typing-dots"><span /><span /><span /></div>
+            </div>
+          </div>
+        )}
+
+        {loading && !loadingHistory && (
           <div className="message assistant">
             <div className="message-avatar">AI</div>
             <div className="message-body">
@@ -146,12 +188,12 @@ export default function ChatPanel({ sessionId }) {
           onKeyDown={handleKey}
           placeholder="Ask about decisions, action items, or what someone said…"
           rows={2}
-          disabled={loading}
+          disabled={loading || loadingHistory}
         />
         <button
           className="send-btn"
           onClick={send}
-          disabled={loading || !input.trim()}
+          disabled={loading || loadingHistory || !input.trim()}
         >
           ↑
         </button>

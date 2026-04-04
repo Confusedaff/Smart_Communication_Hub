@@ -11,21 +11,26 @@ const TABS = [
   { id: "transcript", label: "Transcript", icon: "📄" },
 ];
 
-export default function DashboardView({ session, onNewUpload }) {
+export default function DashboardView({ session, onNewUpload, onOpenHistory, sessionCount }) {
   const [tab,          setTab]          = useState("extract");
   const [extraction,   setExtraction]   = useState(null);
   const [extracting,   setExtracting]   = useState(false);
   const [extractError, setExtractError] = useState(null);
   const [engine,       setEngine]       = useState("nlp");
 
-  // Auto-run extraction on mount
-  useEffect(() => { runExtraction(); }, [session.session_id]);
+  // Reset state when switching to a different session
+  useEffect(() => {
+    setExtraction(null);
+    setExtractError(null);
+    setTab("extract");
+    runExtraction(false, engine);
+  }, [session.session_id]);
 
-  const runExtraction = async (force = false) => {
+  const runExtraction = async (force = false, eng = engine) => {
     setExtracting(true);
     setExtractError(null);
     try {
-      const data = await api.extract(session.session_id, engine, force);
+      const data = await api.extract(session.session_id, eng, force);
       setExtraction(data);
     } catch (e) {
       setExtractError(e.message);
@@ -34,8 +39,9 @@ export default function DashboardView({ session, onNewUpload }) {
     }
   };
 
-  /* Task for timing badge: show "extract" while extraction running, else "chat" */
   const timingTask = extracting ? "extract" : tab === "chat" ? "chat" : "extract";
+
+  const sessionId = session.session_id || session.id;
 
   return (
     <div className="dashboard" style={{ maxWidth: "1600px", width: "100%" }}>
@@ -90,46 +96,46 @@ export default function DashboardView({ session, onNewUpload }) {
           </div>
           <button
             className="re-extract-btn"
-            onClick={() => runExtraction(true)}
+            onClick={() => runExtraction(true, engine)}
             disabled={extracting}
           >
             {extracting ? "Running…" : "↻ Re-extract"}
           </button>
         </div>
 
-        {/* ── LLM Timing — collapsible dropdown in sidebar ── */}
+        {/* LLM Timing */}
         <div className="sidebar-timing">
           <details className="timing-dropdown">
-            <summary className="timing-dropdown-summary">
-              ⏱ Response times
-            </summary>
+            <summary className="timing-dropdown-summary">⏱ Response times</summary>
             <div className="timing-dropdown-body">
               <LLMTimingBadge task={timingTask} inline={true} />
             </div>
           </details>
         </div>
 
-        {/* Export buttons */}
+        {/* Export */}
         {extraction && (
           <div className="export-section">
             <label className="engine-label">Export</label>
-            <a className="export-btn" href={api.exportCsvUrl(session.session_id)} download>
-              ⬇ CSV
-            </a>
-            <a className="export-btn" href={api.exportPdfUrl(session.session_id)} download>
-              ⬇ PDF Report
-            </a>
+            <a className="export-btn" href={api.exportCsvUrl(sessionId)} download>⬇ CSV</a>
+            <a className="export-btn" href={api.exportPdfUrl(sessionId)} download>⬇ PDF Report</a>
           </div>
         )}
 
-        <button className="new-upload-btn" onClick={onNewUpload}>
-          + New Transcript
-        </button>
+        {/* History + New Upload */}
+        <div className="sidebar-bottom-actions">
+          <button className="history-btn" onClick={onOpenHistory}>
+            🗂 All Transcripts
+            {sessionCount > 0 && (
+              <span className="history-count">{sessionCount}</span>
+            )}
+          </button>
+          <button className="new-upload-btn" onClick={onNewUpload}>+ New Transcript</button>
+        </div>
       </aside>
 
       {/* ── Main content ── */}
       <main className="dashboard-main" style={{ flex: 1, minWidth: 0 }}>
-        {/* Top bar */}
         <div className="top-bar">
           <div className="tab-bar">
             {TABS.map((t) => (
@@ -143,17 +149,17 @@ export default function DashboardView({ session, onNewUpload }) {
             ))}
           </div>
 
-          {/* Right side of top-bar: engine badge + collapsible timing */}
           <div className="top-bar-right">
             <div className="engine-badge">
               {engine === "nlp" ? "🧠 spaCy NLP" : "🤖 Ollama LLM"}
             </div>
 
-            {/* Collapsible timing dropdown in top bar */}
+            <button className="history-pill" onClick={onOpenHistory}>
+              🗂 {sessionCount > 1 ? `${sessionCount} transcripts` : "History"}
+            </button>
+
             <details className="timing-dropdown timing-dropdown--topbar">
-              <summary className="timing-dropdown-summary">
-                ⏱ Times
-              </summary>
+              <summary className="timing-dropdown-summary">⏱ Times</summary>
               <div className="timing-dropdown-body timing-dropdown-body--topbar">
                 <LLMTimingBadge task={timingTask} />
               </div>
@@ -161,20 +167,15 @@ export default function DashboardView({ session, onNewUpload }) {
           </div>
         </div>
 
-        {/* Panel */}
         <div className="panel-area">
           {tab === "extract" && (
-            <ExtractionPanel
-              extraction={extraction}
-              loading={extracting}
-              error={extractError}
-            />
+            <ExtractionPanel extraction={extraction} loading={extracting} error={extractError} />
           )}
           {tab === "chat" && (
-            <ChatPanel sessionId={session.session_id} />
+            <ChatPanel sessionId={sessionId} />
           )}
           {tab === "transcript" && (
-            <TranscriptPanel sessionId={session.session_id} />
+            <TranscriptPanel sessionId={sessionId} />
           )}
         </div>
       </main>

@@ -383,15 +383,10 @@ async def extraction_job_status(session_id: str, job_id: str = Query(...)):
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
 
-def _chat_rate_limit(request: Request):
-    """Returns rate limit string only if slowapi is available."""
-    return "20/minute"
-
 
 @app.post("/sessions/{session_id}/chat", tags=["Chat"], response_model=ChatResponse)
+@(_limiter.limit("20/minute") if _SLOWAPI_OK else lambda f: f)
 async def chat_with_transcript(request: Request, session_id: str, body: ChatRequest):
-    if _SLOWAPI_OK:
-        await _limiter._check_request_limit(request, "20/minute", "chat")
 
     session = _require_session(session_id)
 

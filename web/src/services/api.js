@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const BASE_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) || "http://localhost:8000";
 
 async function request(method, path, options = {}) {
   const url = `${BASE_URL}${path}`;
@@ -19,6 +19,12 @@ export const api = {
     return request("POST", "/upload", { body: form }).then((r) => r.json());
   },
 
+  uploadBatch: (files) => {
+    const form = new FormData();
+    files.forEach((f) => form.append("files", f));
+    return request("POST", "/upload/batch", { body: form }).then((r) => r.json());
+  },
+
   extract: (sessionId, engine = null, force = false) => {
     const params = new URLSearchParams();
     if (engine) params.set("engine", engine);
@@ -27,11 +33,18 @@ export const api = {
     return request("GET", `/sessions/${sessionId}/extract${qs}`).then((r) => r.json());
   },
 
+  // Non-streaming chat (kept for fallback)
   chat: (sessionId, question) =>
     request("POST", `/sessions/${sessionId}/chat`, {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),
     }).then((r) => r.json()),
+
+  // Streaming chat — returns an EventSource
+  chatStream: (sessionId, question) => {
+    const url = `${BASE_URL}/sessions/${sessionId}/chat/stream?question=${encodeURIComponent(question)}`;
+    return new EventSource(url);
+  },
 
   chatHistory: (sessionId) =>
     request("GET", `/sessions/${sessionId}/chat/history`).then((r) => r.json()),
@@ -42,7 +55,11 @@ export const api = {
   transcript: (sessionId, format = "segments") =>
     request("GET", `/sessions/${sessionId}/transcript?format=${format}`).then((r) => r.json()),
 
+  // All sessions from backend (persisted across restarts)
   sessions: () => request("GET", "/sessions").then((r) => r.json()),
+
+  getSession: (sessionId) =>
+    request("GET", `/sessions/${sessionId}`).then((r) => r.json()),
 
   deleteSession: (sessionId) =>
     request("DELETE", `/sessions/${sessionId}`).then((r) => r.json()),

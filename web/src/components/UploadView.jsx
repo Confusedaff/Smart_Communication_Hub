@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback } from "react";
 import { api } from "../services/api";
 
-export default function UploadView({ onSuccess }) {
+export default function UploadView({ onSuccess, sessionCount, onOpenHistory }) {
   const [dragging, setDragging] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState(null);
   const [progress, setProgress] = useState("");
   const inputRef = useRef();
 
@@ -21,7 +21,7 @@ export default function UploadView({ onSuccess }) {
     try {
       const data = await api.upload(file);
       setProgress("Parsing transcript…");
-      await new Promise((r) => setTimeout(r, 400));
+      await new Promise((r) => setTimeout(r, 300));
       onSuccess(data);
     } catch (e) {
       setError(e.message);
@@ -39,10 +39,15 @@ export default function UploadView({ onSuccess }) {
 
   return (
     <div className="upload-page">
-      {/* Background grid */}
       <div className="grid-bg" aria-hidden />
 
-      {/* Header */}
+      {/* History button — top right if sessions exist */}
+      {sessionCount > 0 && (
+        <button className="upload-history-btn" onClick={onOpenHistory}>
+          🗂 {sessionCount} previous transcript{sessionCount !== 1 ? "s" : ""}
+        </button>
+      )}
+
       <header className="upload-header">
         <div className="logo-mark">MIH</div>
         <div className="header-text">
@@ -51,7 +56,6 @@ export default function UploadView({ onSuccess }) {
         </div>
       </header>
 
-      {/* Drop zone */}
       <main className="upload-main">
         <div
           className={`drop-zone ${dragging ? "dragging" : ""} ${loading ? "loading" : ""}`}
@@ -97,13 +101,13 @@ export default function UploadView({ onSuccess }) {
 
         {error && <div className="error-banner">{error}</div>}
 
-        {/* Feature chips */}
         <div className="feature-chips">
           {[
             { icon: "⚡", label: "Instant extraction" },
             { icon: "🎯", label: "Decision detection" },
             { icon: "✅", label: "Action items" },
-            { icon: "💬", label: "AI Q&A chatbot" },
+            { icon: "💬", label: "Streaming AI Q&A" },
+            { icon: "💾", label: "Persistent sessions" },
           ].map((f) => (
             <div className="chip" key={f.label}>
               <span>{f.icon}</span>
