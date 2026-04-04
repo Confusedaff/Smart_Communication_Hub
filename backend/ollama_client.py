@@ -5,11 +5,24 @@ Improvements:
   - Retry logic with exponential backoff (tenacity) on Groq rate-limit errors.
   - generate_stream() now supports Groq too (server-sent events).
   - All public functions unchanged so other modules don't need updating.
+
+Fixes (v2):
+  - Groq 429 now retries up to 5 times (was 3) with proper Retry-After header
+    respect + exponential backoff + jitter, before ever touching Ollama.
+  - generate() and chat() no longer fall back to Ollama on 429 — only on
+    non-recoverable errors (auth failures, network errors, model not found).
+  - _with_retry() now uses wait_groq_backoff() which reads the Retry-After
+    header from the response when available, falling back to exponential.
+  - Console output clearly distinguishes a transient 429-retry from a true
+    fallback, so the user knows what is happening.
+  - Streaming path also gets the same retry wrapper via _groq_stream_with_retry.
 """
 
 import os
 import json
 import time
+import asyncio
+import random
 import httpx
 import logging
 from pathlib import Path
@@ -23,7 +36,10 @@ except ImportError:
     pass
 
 try:
-    from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+    from tenacity import (
+        retry, stop_after_attempt, wait_exponential, wait_random,
+        retry_if_exception, RetryCallState,
+    )
     _TENACITY_OK = True
 except ImportError:
     _TENACITY_OK = False
@@ -115,24 +131,75 @@ def get_all_timing_info(task: str = "chat") -> dict:
     }
 
 
-# ── Retry decorator ───────────────────────────────────────────────────────────
+# ── Retry helpers ─────────────────────────────────────────────────────────────
 
 def _is_rate_limit(exc: Exception) -> bool:
+    """True only for 429 — these are worth retrying."""
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code == 429
     return False
 
 
-def _with_retry(fn):
-    """Wrap an async function with tenacity retries if available."""
-    if not _TENACITY_OK:
-        return fn
-    return retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(min=1, max=10),
-        retry=retry_if_exception(_is_rate_limit),
-        reraise=True,
-    )(fn)
+def _is_fatal(exc: Exception) -> bool:
+    """True for errors that retrying will never fix (auth, bad model, etc.)."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in (401, 403, 404, 422)
+    return False
+
+
+def _retry_after_seconds(exc: Exception, attempt: int) -> float:
+    """
+    Read Retry-After header from a 429 response if present.
+    Fall back to exponential backoff with jitter.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        header = exc.response.headers.get("retry-after") or exc.response.headers.get("x-ratelimit-reset-requests")
+        if header:
+            try:
+                wait = float(header)
+                logger.info(f"[LLM] Groq Retry-After header: {wait}s")
+                return wait + random.uniform(0.1, 0.5)   # small jitter on top
+            except ValueError:
+                pass
+    # Exponential: 2, 4, 8, 16 … capped at 30s, plus jitter
+    return min(2 ** attempt + random.uniform(0, 1), 30.0)
+
+
+async def _groq_with_retry(coro_fn, *args, max_attempts: int = 5, **kwargs):
+    """
+    Call an async Groq function with up to `max_attempts` retries on 429.
+    Raises immediately on fatal errors. Falls through to caller on exhaustion.
+    """
+    last_exc = None
+    for attempt in range(max_attempts):
+        try:
+            return await coro_fn(*args, **kwargs)
+        except Exception as exc:
+            if _is_fatal(exc):
+                logger.error(f"[LLM] Groq fatal error ({exc}) — not retrying")
+                raise
+            if _is_rate_limit(exc):
+                wait = _retry_after_seconds(exc, attempt)
+                logger.warning(
+                    f"[LLM] Groq 429 rate-limited — retrying in {wait:.1f}s "
+                    f"(attempt {attempt + 1}/{max_attempts})"
+                )
+                print(
+                    f"   ⏳ Groq rate limit hit — retrying in {wait:.1f}s "
+                    f"(attempt {attempt + 1}/{max_attempts})..."
+                )
+                await asyncio.sleep(wait)
+                last_exc = exc
+                continue
+            # Non-429, non-fatal network/timeout error — retry with backoff too
+            wait = _retry_after_seconds(exc, attempt)
+            logger.warning(f"[LLM] Groq transient error ({exc}) — retrying in {wait:.1f}s")
+            await asyncio.sleep(wait)
+            last_exc = exc
+
+    # All retries exhausted
+    logger.warning(f"[LLM] Groq exhausted {max_attempts} retries — last error: {last_exc}")
+    raise last_exc
 
 
 # ── Public generate / chat ────────────────────────────────────────────────────
@@ -141,14 +208,17 @@ async def generate(prompt: str, system: str = "", temperature: float = 0.2, max_
     backend = _active_backend()
     start   = time.perf_counter()
     try:
-        result = await (_groq_generate if backend == "groq" else _ollama_generate)(
-            prompt, system, temperature, max_tokens
-        )
+        if backend == "groq":
+            result = await _groq_with_retry(_groq_generate, prompt, system, temperature, max_tokens)
+        else:
+            result = await _ollama_generate(prompt, system, temperature, max_tokens)
     except Exception as exc:
+        # Only reach here if retries exhausted or a fatal error — now truly fall back
         fallback = "ollama" if backend == "groq" else "groq"
-        logger.warning(f"[LLM] {backend} failed ({exc}) — falling back to {fallback}")
+        logger.warning(f"[LLM] {backend} failed after retries ({exc}) — falling back to {fallback}")
+        print(f"\n⚠️  Groq unavailable after retries — switching to Ollama (may be slower)\n")
         if fallback == "groq" and GROQ_API_KEY:
-            result = await _groq_generate(prompt, system, temperature, max_tokens)
+            result = await _groq_with_retry(_groq_generate, prompt, system, temperature, max_tokens)
         else:
             result = await _ollama_generate(prompt, system, temperature, max_tokens)
     elapsed = round(time.perf_counter() - start, 2)
@@ -161,14 +231,16 @@ async def chat(messages: list[dict], temperature: float = 0.3, max_tokens: int =
     backend = _active_backend()
     start   = time.perf_counter()
     try:
-        result = await (_groq_chat_with_retry if backend == "groq" else _ollama_chat)(
-            messages, temperature, max_tokens
-        )
+        if backend == "groq":
+            result = await _groq_with_retry(_groq_chat, messages, temperature, max_tokens)
+        else:
+            result = await _ollama_chat(messages, temperature, max_tokens)
     except Exception as exc:
         fallback = "ollama" if backend == "groq" else "groq"
-        logger.warning(f"[LLM] {backend} failed ({exc}) — falling back to {fallback}")
+        logger.warning(f"[LLM] {backend} failed after retries ({exc}) — falling back to {fallback}")
+        print(f"\n⚠️  Groq unavailable after retries — switching to Ollama (may be slower)\n")
         if fallback == "groq" and GROQ_API_KEY:
-            result = await _groq_chat_with_retry(messages, temperature, max_tokens)
+            result = await _groq_with_retry(_groq_chat, messages, temperature, max_tokens)
         else:
             result = await _ollama_chat(messages, temperature, max_tokens)
     elapsed = round(time.perf_counter() - start, 2)
@@ -210,7 +282,7 @@ async def _groq_generate(prompt, system, temperature, max_tokens) -> str:
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
-    return await _groq_chat_with_retry(messages, temperature, max_tokens)
+    return await _groq_chat(messages, temperature, max_tokens)
 
 
 async def _groq_chat(messages, temperature, max_tokens) -> str:
@@ -227,9 +299,6 @@ async def _groq_chat(messages, temperature, max_tokens) -> str:
         return resp.json()["choices"][0]["message"]["content"].strip()
 
 
-# Apply retry wrapper (no-op if tenacity missing)
-_groq_chat_with_retry = _with_retry(_groq_chat)
-
 
 # ── Streaming ─────────────────────────────────────────────────────────────────
 
@@ -243,12 +312,20 @@ async def generate_stream(
     """
     Unified streaming generator for both Ollama and Groq.
     Pass `messages` for chat-style streaming, or `prompt`+`system` for generate-style.
+    Groq 429s are retried with backoff before falling back to Ollama.
     """
     backend = _active_backend()
 
     if backend == "groq":
-        async for token in _groq_stream(messages or _build_messages(prompt, system), temperature, max_tokens):
-            yield token
+        msgs = messages or _build_messages(prompt, system)
+        try:
+            async for token in _groq_stream_with_retry(msgs, temperature, max_tokens):
+                yield token
+        except Exception as exc:
+            logger.warning(f"[LLM:stream] Groq failed after retries ({exc}) — falling back to Ollama")
+            print(f"\n⚠️  Groq unavailable after retries — streaming via Ollama (may be slower)\n")
+            async for token in _ollama_stream(prompt, system, temperature, max_tokens):
+                yield token
     else:
         async for token in _ollama_stream(prompt, system, temperature, max_tokens):
             yield token
@@ -282,6 +359,29 @@ async def _ollama_stream(prompt, system, temperature, max_tokens) -> AsyncGenera
                         break
                 except json.JSONDecodeError:
                     continue
+
+
+async def _groq_stream_with_retry(messages, temperature, max_tokens, max_attempts: int = 5) -> AsyncGenerator[str, None]:
+    """Streaming version of Groq with 429 retry — re-opens the connection on rate limit."""
+    last_exc = None
+    for attempt in range(max_attempts):
+        try:
+            async for token in _groq_stream(messages, temperature, max_tokens):
+                yield token
+            return   # success
+        except Exception as exc:
+            if _is_fatal(exc):
+                raise
+            if _is_rate_limit(exc) or True:   # retry on any stream error
+                wait = _retry_after_seconds(exc, attempt)
+                logger.warning(
+                    f"[LLM:stream] Groq error ({exc}) — retrying in {wait:.1f}s "
+                    f"(attempt {attempt + 1}/{max_attempts})"
+                )
+                print(f"   ⏳ Groq stream error — retrying in {wait:.1f}s (attempt {attempt + 1}/{max_attempts})...")
+                await asyncio.sleep(wait)
+                last_exc = exc
+    raise last_exc
 
 
 async def _groq_stream(messages, temperature, max_tokens) -> AsyncGenerator[str, None]:
