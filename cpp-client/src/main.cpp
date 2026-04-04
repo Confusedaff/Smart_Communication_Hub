@@ -2,6 +2,7 @@
 #include <QFont>
 #include <QFontDatabase>
 #include <QDir>
+#include <QIcon>
 #include "MainWindow.h"
 #include "StyleSheet.h"
 
@@ -16,6 +17,7 @@ int main(int argc, char* argv[]) {
     app.setApplicationName("Meeting Intelligence Hub");
     app.setApplicationVersion("1.1.0");
     app.setOrganizationName("MIH");
+    app.setWindowIcon(QIcon(":/icon.png"));
 
     // Try to load JetBrains Mono if available in resources
     QFontDatabase::addApplicationFont(":/fonts/JetBrainsMono-Regular.ttf");
