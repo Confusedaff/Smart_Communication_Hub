@@ -55,6 +55,7 @@ struct Session {
     QList<ChatMessage> chatHistory;
     bool               hasExtraction = false;
     QDateTime          createdAt;
+    QList<ChatMessage> chatMessages;
 };
 
 struct AppState {

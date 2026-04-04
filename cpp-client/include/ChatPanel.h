@@ -30,6 +30,9 @@ public:
     void loadHistory(const QList<ChatMessage>& history);
     void clearMessages();
 
+    // Returns the current list of messages for per-session caching
+    QList<ChatMessage> messages() const { return m_messages; }
+
 signals:
     void messageSent(const QString& text);
     void clearHistoryRequested();
@@ -41,6 +44,7 @@ private:
     void setupUi();
     void scrollToBottom();
     void handleSend();
+    void addMessageWidget(const ChatMessage& msg); // appends bubble widget only, no cache update
 
     QScrollArea*    m_scroll;
     QWidget*        m_messagesWidget;
@@ -51,4 +55,6 @@ private:
     QPushButton*    m_clearBtn;
     LoadingSpinner* m_spinner;
     QLabel*         m_thinkingLabel;
+
+    QList<ChatMessage> m_messages; // per-session chat cache
 };

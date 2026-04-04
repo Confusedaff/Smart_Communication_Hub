@@ -213,7 +213,7 @@ void ChatPanel::setupUi() {
     auto welcomeMsg = ChatMessage{};
     welcomeMsg.role = "assistant";
     welcomeMsg.content = "Ask me anything about this transcript — who said what, what was decided, or any action items.";
-    addMessage(welcomeMsg);
+    addMessageWidget(welcomeMsg);  // addMessageWidget, not addMessage, so it doesn't touch m_messages
 
     m_messagesLayout->addStretch();
     m_scroll->setWidget(m_messagesWidget);
@@ -293,8 +293,9 @@ void ChatPanel::handleSend() {
     emit messageSent(text);
 }
 
-void ChatPanel::addMessage(const ChatMessage& msg) {
-    // Remove the stretch at bottom if present
+// ── Private helper: append a bubble widget without touching m_messages ────────
+void ChatPanel::addMessageWidget(const ChatMessage& msg) {
+    // Remove the bottom stretch if present
     QLayoutItem* stretch = nullptr;
     int count = m_messagesLayout->count();
     if (count > 0) {
@@ -305,10 +306,16 @@ void ChatPanel::addMessage(const ChatMessage& msg) {
 
     auto* bubble = new ChatBubble(msg, m_messagesWidget);
     m_messagesLayout->addWidget(bubble);
-    m_messagesLayout->addStretch(); // always re-add stretch (replace or add fresh)
-    delete stretch;                 // discard the old spacer item (we just added a new one)
+    m_messagesLayout->addStretch();
+    delete stretch;
 
     QTimer::singleShot(50, this, [this]() { scrollToBottom(); });
+}
+
+// ── Public: add a message AND track it in m_messages ─────────────────────────
+void ChatPanel::addMessage(const ChatMessage& msg) {
+    m_messages.append(msg);
+    addMessageWidget(msg);
 }
 
 void ChatPanel::setLoading(bool on) {
@@ -324,20 +331,47 @@ void ChatPanel::setClearHistoryEnabled(bool on) {
     m_clearBtn->setEnabled(on);
 }
 
+// ── Restore a saved history into the UI (does NOT re-add to m_messages) ───────
 void ChatPanel::loadHistory(const QList<ChatMessage>& history) {
-    clearMessages();
-    for (const auto& msg : history)
-        addMessage(msg);
-}
-
-void ChatPanel::clearMessages() {
+    // Clear all widgets
     while (m_messagesLayout->count() > 0) {
         auto* item = m_messagesLayout->takeAt(0);
         if (item->widget()) item->widget()->deleteLater();
         delete item;
     }
-    // Add welcome message and stretch back
-    auto welcomeMsg = ChatMessage{};
+
+    // Sync the internal list
+    m_messages = history;
+
+    // Rebuild widgets from the history
+    for (const auto& msg : history)
+        addMessageWidget(msg);
+
+    // If history is empty, show the welcome prompt
+    if (history.isEmpty()) {
+        ChatMessage welcome{};
+        welcome.role = "assistant";
+        welcome.content = "Ask me anything about this transcript — who said what, what was decided, or any action items.";
+        addMessageWidget(welcome);
+    }
+
+    // Ensure stretch at bottom
+    m_messagesLayout->addStretch();
+    QTimer::singleShot(50, this, [this]() { scrollToBottom(); });
+}
+
+// ── Clear everything: wipe widgets, wipe m_messages, show welcome ─────────────
+void ChatPanel::clearMessages() {
+    m_messages.clear();
+
+    while (m_messagesLayout->count() > 0) {
+        auto* item = m_messagesLayout->takeAt(0);
+        if (item->widget()) item->widget()->deleteLater();
+        delete item;
+    }
+
+    // Re-add welcome message and stretch
+    ChatMessage welcomeMsg{};
     welcomeMsg.role = "assistant";
     welcomeMsg.content = "Ask me anything about this transcript — who said what, what was decided, or any action items.";
     auto* bubble = new ChatBubble(welcomeMsg, m_messagesWidget);

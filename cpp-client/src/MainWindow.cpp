@@ -28,11 +28,22 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     }
 
     m_api = new ApiClient("http://localhost:8000", this);
+    m_currentBackendUrl = "http://localhost:8000";
 
     m_timingTimer = new QTimer(this);
     m_timingTimer->setInterval(30000); // poll every 30s
     connect(m_timingTimer, &QTimer::timeout, this, [this]() {
         m_api->getTimingStatus("chat");
+    });
+
+    // Health check — polls every 5s while the upload page is visible
+    m_healthTimer = new QTimer(this);
+    m_healthTimer->setInterval(5000);
+    connect(m_healthTimer, &QTimer::timeout, this, [this]() {
+        m_api->checkHealth();
+    });
+    connect(m_api, &ApiClient::healthCheckDone, this, [this](bool ok, const QJsonObject&) {
+        m_uploadPage->setOnline(ok, m_currentBackendUrl);
     });
 
     setStyleSheet(MIHStyle::globalStyleSheet());
@@ -136,6 +147,13 @@ void MainWindow::setupConnections() {
         m_api->uploadTranscript(path);
     });
 
+    connect(m_uploadPage, &UploadWidget::backendUrlChanged, this, [this](const QString& newUrl) {
+        m_currentBackendUrl = newUrl;
+        m_api->setBaseUrl(newUrl);
+        // Immediately probe the new address
+        m_api->checkHealth();
+    });
+
     // API responses
     connect(m_api, &ApiClient::uploadDone, this, &MainWindow::onUploadDone);
     connect(m_api, &ApiClient::uploadError, this, [this](const QString& err) {
@@ -156,8 +174,21 @@ void MainWindow::setupConnections() {
     connect(m_api, &ApiClient::downloadDone,  this, &MainWindow::onDownloadDone);
     connect(m_api, &ApiClient::downloadError, this, &MainWindow::onDownloadError);
 
+    // ── Chat history cleared: wipe server + local cache + UI ─────────────────
     connect(m_api, &ApiClient::chatHistoryCleared, this, [this]() {
+        if (auto* sess = m_state.activeSession())
+            sess->chatMessages.clear();  // clear local cache for this session
         m_chatPanel->clearMessages();
+    });
+
+    // ── Chat history fetched from server (first visit to a session) ───────────
+    connect(m_api, &ApiClient::chatHistoryDone, this, [this](const QJsonArray& history) {
+        auto* sess = m_state.activeSession();
+        if (!sess) return;
+        auto msgs = parseChatHistory(history);
+        sess->chatMessages = msgs;       // populate cache from server
+        if (!msgs.isEmpty())
+            m_chatPanel->loadHistory(msgs);
     });
 
     // Sidebar
@@ -200,7 +231,7 @@ void MainWindow::setupConnections() {
 
     connect(m_sidebar, &Sidebar::sessionSelected, this, &MainWindow::loadSession);
 
-    // Chat
+    // ── Chat: send message ────────────────────────────────────────────────────
     connect(m_chatPanel, &ChatPanel::messageSent, this, [this](const QString& text) {
         auto* sess = m_state.activeSession();
         if (!sess) return;
@@ -210,8 +241,11 @@ void MainWindow::setupConnections() {
         userMsg.content = text;
         userMsg.timestamp = QDateTime::currentDateTime();
         m_chatPanel->addMessage(userMsg);
-        m_chatPanel->setLoading(true);
 
+        // Cache the user message immediately so switching away won't lose it
+        sess->chatMessages.append(userMsg);
+
+        m_chatPanel->setLoading(true);
         m_api->sendChat(sess->id, text);
     });
 
@@ -223,11 +257,16 @@ void MainWindow::setupConnections() {
 
 void MainWindow::showUploadPage() {
     m_uploadPage->resetState();
+    m_uploadPage->setConnecting(m_currentBackendUrl);
     m_stack->setCurrentIndex(0);
     m_timingTimer->stop();
+    // Start polling health while the upload page is visible
+    m_api->checkHealth();
+    m_healthTimer->start();
 }
 
 void MainWindow::showWorkspacePage() {
+    m_healthTimer->stop();
     m_stack->setCurrentIndex(1);
     m_timingTimer->start();
     m_api->getTimingStatus("chat");
@@ -256,6 +295,11 @@ void MainWindow::switchTab(const QString& tab) {
 }
 
 void MainWindow::loadSession(const QString& sessionId) {
+    // ── Save current session's chat messages before switching ─────────────────
+    if (auto* prev = m_state.activeSession()) {
+        prev->chatMessages = m_chatPanel->messages();
+    }
+
     for (int i = 0; i < m_state.sessions.size(); ++i) {
         if (m_state.sessions[i].id == sessionId) {
             m_state.activeSessionIndex = i;
@@ -267,9 +311,8 @@ void MainWindow::loadSession(const QString& sessionId) {
     auto* sess = m_state.activeSession();
     if (!sess) return;
 
-    // Reset panels for newly selected session
+    // ── Restore extraction and transcript panels ───────────────────────────────
     m_extractionPanel->clear();
-    m_chatPanel->clearMessages();
     m_transcriptPanel->clear();
 
     if (sess->hasExtraction)
@@ -277,6 +320,15 @@ void MainWindow::loadSession(const QString& sessionId) {
 
     if (!sess->segments.isEmpty())
         m_transcriptPanel->setSegments(sess->segments, sess->filename);
+
+    // ── Restore chat: use local cache if available, else fetch from server ─────
+    if (!sess->chatMessages.isEmpty()) {
+        m_chatPanel->loadHistory(sess->chatMessages);
+    } else {
+        m_chatPanel->clearMessages();
+        // Fetch history from server — the chatHistoryDone signal will populate the cache
+        m_api->getChatHistory(sess->id);
+    }
 
     switchTab(m_state.activeTab);
 }
@@ -300,6 +352,9 @@ void MainWindow::onUploadDone(const QString& sessionId, const QJsonObject& data)
     m_sidebar->setSessions(m_state.sessions, 0);
     m_sidebar->setActiveSession(0);
     m_sidebar->setExtractionCount(0);
+
+    // New session — start with an empty chat panel
+    m_chatPanel->clearMessages();
 
     showWorkspacePage();
     switchTab("extraction");
@@ -348,6 +403,10 @@ void MainWindow::onChatDone(const QJsonObject& data) {
         msg.citations << cv.toObject();
 
     m_chatPanel->addMessage(msg);
+
+    // Cache the AI reply in the active session
+    if (auto* sess = m_state.activeSession())
+        sess->chatMessages.append(msg);
 }
 
 void MainWindow::onChatError(const QString& err) {
@@ -356,6 +415,10 @@ void MainWindow::onChatError(const QString& err) {
     errMsg.role    = "assistant";
     errMsg.content = "⚠  Error: " + err;
     m_chatPanel->addMessage(errMsg);
+
+    // Cache error message too so it's visible if the user switches and comes back
+    if (auto* sess = m_state.activeSession())
+        sess->chatMessages.append(errMsg);
 }
 
 void MainWindow::onTimingDone(const QJsonObject& data) {
@@ -441,6 +504,7 @@ QList<ChatMessage> MainWindow::parseChatHistory(const QJsonArray& history) {
 
 void MainWindow::closeEvent(QCloseEvent* event) {
     m_timingTimer->stop();
+    m_healthTimer->stop();
     event->accept();
 }
 
