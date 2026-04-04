@@ -35,15 +35,18 @@ SidebarSessionItem::SidebarSessionItem(const Session& session, bool active, QWid
     // File icon prepended
     auto* row = new QHBoxLayout;
     row->setSpacing(8);
+    row->setAlignment(Qt::AlignVCenter);
     auto* icon = new QLabel("📁", this);
-    icon->setStyleSheet("font-size:14px; background:transparent;");
-    icon->setFixedWidth(20);
+    icon->setFixedSize(24, 24);
+    icon->setAlignment(Qt::AlignCenter);
+    icon->setStyleSheet("font-size:16px; background:transparent;");
     auto* textCol = new QVBoxLayout;
     textCol->setSpacing(2);
+    textCol->setContentsMargins(0, 0, 0, 0);
     textCol->addWidget(m_fileLabel);
     textCol->addWidget(m_metaLabel);
-    row->addWidget(icon);
-    row->addLayout(textCol);
+    row->addWidget(icon, 0, Qt::AlignVCenter);
+    row->addLayout(textCol, 1);
     layout->addLayout(row);
 
     applyStyle(active);
