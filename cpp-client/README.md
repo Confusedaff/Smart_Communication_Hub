@@ -5,6 +5,18 @@ Matches all UI screenshots: animated upload page, extraction panel, chatbot, tra
 
 ---
 
+## Screenshots
+
+<img width="2879" height="1746" alt="Upload Page" src="https://github.com/user-attachments/assets/43d71f63-a7d6-40a4-b036-dcf06e9b303c" />
+
+<img width="2879" height="1741" alt="Extraction Panel" src="https://github.com/user-attachments/assets/2287beac-f6a1-4f8d-9d9b-c1ed97199bed" />
+
+<img width="2879" height="1748" alt="Chatbot Panel" src="https://github.com/user-attachments/assets/dd5cca2a-a99e-45f8-994c-784026640ff5" />
+
+<img width="2879" height="1741" alt="Transcript Panel" src="https://github.com/user-attachments/assets/5574709d-a2e3-46c3-923e-8d72b009a3c7" />
+
+---
+
 ## What's New (v1.2.0)
 
 - **Green scrollbars** — All scroll areas now use the app's accent green (`#3fb950` / `#1a7a4a`) instead of the default grey, matching the sidebar, badges, and buttons throughout the UI.
@@ -142,12 +154,3 @@ For the exact font used in the UI:
 The app falls back gracefully to Consolas → Courier New → system monospace.
 
 ---
-
-## Planned Extensions
-
-- [ ] Settings dialog (backend URL, model selection)
-- [ ] Multiple session tabs
-- [ ] Search/filter in transcript
-- [ ] Keyboard shortcuts
-- [ ] System tray integration
-- [ ] Auto-reconnect when backend restarts
