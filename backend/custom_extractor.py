@@ -1,5 +1,13 @@
 """
 custom_extractor.py — Zero-LLM extraction engine using spaCy.
+
+Key fixes vs original:
+  - Closing recap parser: detects structured end-of-meeting summaries
+    ("Decisions made today: 1... Action items: Name, task by deadline")
+    and extracts them with high confidence before falling back to NLP.
+  - Recap items take precedence and are de-duplicated against NLP results.
+  - Speaker attribution now also checks addressed-name patterns
+    ("Name, please do X" → owner = Name).
 """
 
 import re
@@ -19,9 +27,142 @@ except OSError:
         stacklevel=2,
     )
     _nlp = spacy.blank("en")
-    # Blank model has no sentencizer — add one so doc.sents works
     if "sentencizer" not in _nlp.pipe_names:
         _nlp.add_pipe("sentencizer")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SECTION 0 — Closing Recap Parser
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Matches a closing recap block in the transcript
+_RECAP_BLOCK_RE = re.compile(
+    r"(?:decisions\s+(?:made\s+)?(?:today|this meeting)?[:\-].*?)"
+    r"(?=\n\n|\Z|does anyone|any questions|thank you|good meeting)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# Matches "one, we are X" or "1. We are X" or "one: we are X" style decision entries
+_RECAP_DECISION_RE = re.compile(
+    r"(?:^|\.\s+|\n)"                          # start or after sentence
+    r"(?:\d+[.):]|one,|two,|three,|four,|five,|six,|seven,|eight,|nine,|ten,)\s*"
+    r"(we (?:are|will|have)|(?:the team|it was) (?:agreed|decided)|"
+    r"(?:approved|confirmed|proceeding with|building|moving|prioritizing|engaging))"
+    r"[^.!?\n]{10,200}[.!?]?",
+    re.IGNORECASE,
+)
+
+# Matches "Name, task by deadline." in an action items recap
+_RECAP_ACTION_RE = re.compile(
+    r"([A-Z][a-z]+(?: [A-Z][a-z]+)?),\s+"     # "First Last, " or "First, "
+    r"([^.!?\n]{10,150}?)"                     # task description
+    r"(?:\s+by\s+([^.!?\n]{3,40}?))?[.!?]?$", # optional "by <deadline>"
+    re.IGNORECASE | re.MULTILINE,
+)
+
+_DEADLINE_WORDS = re.compile(
+    r"\b(by\s+)?(next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday"
+    r"|today|tomorrow|eod|eow|end of (?:day|week|month|quarter|next week)"
+    r"|\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?)\b",
+    re.IGNORECASE,
+)
+
+
+def _parse_closing_recap(segments: list[dict]) -> tuple[list[dict], list[dict]]:
+    """
+    Scan the last 25% of segments for a closing recap block where the meeting
+    chair explicitly lists decisions and action items. Returns (decisions, actions).
+    """
+    decisions:    list[dict] = []
+    action_items: list[dict] = []
+
+    if not segments:
+        return decisions, action_items
+
+    # Only look in the final quarter of the transcript
+    tail_start = max(0, int(len(segments) * 0.75))
+    tail_segs  = segments[tail_start:]
+
+    # Reconstruct tail text preserving speaker info per line
+    tail_lines = []
+    for seg in tail_segs:
+        speaker = seg.get("speaker", "")
+        text    = seg.get("text", "").strip()
+        if text:
+            tail_lines.append((speaker, text))
+
+    full_tail = "\n".join(t for _, t in tail_lines)
+
+    # Detect the recap block
+    recap_match = _RECAP_BLOCK_RE.search(full_tail)
+    if not recap_match:
+        return decisions, action_items
+
+    recap_text = recap_match.group(0)
+    logger_msg = f"[NLP] Closing recap detected ({len(recap_text)} chars)"
+    try:
+        import logging
+        logging.getLogger(__name__).info(logger_msg)
+    except Exception:
+        pass
+
+    # ── Extract decisions from recap ──────────────────────────────────────────
+    dec_id = 1
+    # Find the decisions portion (before "Action items:")
+    dec_section_match = re.search(
+        r"decisions[^:]*:(.*?)(?=action items?[^:]*:|$)",
+        recap_text, re.IGNORECASE | re.DOTALL
+    )
+    if dec_section_match:
+        dec_text = dec_section_match.group(1)
+        # Split on numbered/word-numbered list items
+        items = re.split(
+            r"(?:^|\.\s+)(?:\d+[.):]|one,|two,|three,|four,|five,|six,|seven,|eight,|nine,|ten,)\s*",
+            dec_text, flags=re.IGNORECASE
+        )
+        for item in items:
+            item = item.strip().rstrip(".!?,")
+            if len(item) > 15:
+                decisions.append({
+                    "id":          dec_id,
+                    "description": _clean(item),
+                    "made_by":     None,   # hard to attribute from recap
+                    "context":     item,
+                })
+                dec_id += 1
+
+    # ── Extract action items from recap ───────────────────────────────────────
+    act_id = 1
+    act_section_match = re.search(
+        r"action items?[^:]*:(.*)",
+        recap_text, re.IGNORECASE | re.DOTALL
+    )
+    if act_section_match:
+        act_text = act_section_match.group(1)
+        for m in _RECAP_ACTION_RE.finditer(act_text):
+            owner    = m.group(1).strip()
+            task     = m.group(2).strip().rstrip(".!?,")
+            deadline_raw = m.group(3)
+
+            # Try to pull deadline out of the task text if not in group(3)
+            if not deadline_raw:
+                dm = _DEADLINE_WORDS.search(task)
+                if dm:
+                    deadline_raw = dm.group(0).strip()
+
+            deadline = deadline_raw.strip().capitalize() if deadline_raw else None
+
+            if len(task) > 8:
+                action_items.append({
+                    "id":      act_id,
+                    "what":    _clean(task),
+                    "who":     owner if owner else None,
+                    "by_when": deadline,
+                    "context": m.group(0).strip(),
+                })
+                act_id += 1
+
+    return decisions, action_items
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -29,7 +170,6 @@ except OSError:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 _DECISION_PATTERNS = [
-    # ── Formal decision language ──────────────────────────────────────────────
     r"\bwe('ve| have)? decided\b",
     r"\bit('s| is) decided\b",
     r"\bwe('re| are) going (with|to go with)\b",
@@ -47,7 +187,6 @@ _DECISION_PATTERNS = [
     r"\bselected\b",
     r"\bresolved (to|that)\b",
     r"\bmoved forward (with|on)\b",
-    # ── Conversational agreement / affirmation ────────────────────────────────
     r"\bworks for me\b",
     r"\bthat (makes|sounds) (sense|good|right|great)\b",
     r"\bI suggest\b.{0,80}",
@@ -58,21 +197,16 @@ _DECISION_PATTERNS = [
     r"\b(agreed)[.!]?\s*$",
     r"\b(agreed)[.,]?\s*(add|include|improve|proceed|use|prioritize|finalize)\b",
     r"\b(proceed|proceeding) with\b",
-    # ── Group/team directives — "we should X", "we need to X" ────────────────
-    # Key insight: "we should" = group decision; "I'll" = individual action
     r"\bwe (should|need to|must|have to) (improve|fix|finalize|update|optimize|plan|prioritize|add|include|review|use|proceed|focus|address|resolve)\b",
     r"\b(the team|everyone) (should|needs? to|must)\b",
     r"\b(needs?|need) (updating|fixing|improving|finalizing|optimizing|addressing|resolving)\b",
-    # ── Implicit decisions via "should improve/fix/update" framing ───────────
     r"\bwe should (improve|fix|update|optimize|finalize|add|include|prioritize|address|resolve|plan|review)\b",
     r"\b(should|must) (improve|fix|update|add|include|prioritize|finalize|optimize|address)\b.{0,50}\b(accessibility|performance|design|documentation|queries|response|bugs?|features?)\b",
-    # ── "Noted" / "How about X" agreement patterns ───────────────────────────
     r"\b(noted)[.!]?\s*$",
-    r"\bhow about\b.{0,40}\?",  # proposal that typically gets agreed to
+    r"\bhow about\b.{0,40}\?",
 ]
 
 _ACTION_PATTERNS = [
-    # ── Explicit personal commitment with deadline ────────────────────────────
     r"\bwill\b.{0,60}\b(by|before|until|due|deadline)\b",
     r"\bhas to\b",
     r"\bplease\b.{0,60}\b(send|prepare|review|update|create|write|schedule|set up|follow|reach out|check)\b",
@@ -83,7 +217,6 @@ _ACTION_PATTERNS = [
     r"\bown(ing)? this\b",
     r"\bassigned? (to|for)\b",
     r"\bfollow[ -]?up\b.{0,30}\b(on|with|about)\b",
-    # I'll = individual personal commitment (action, not group decision)
     r"\bI('ll| will) (send|prepare|compile|draft|update|create|write|schedule|reach out|check|handle|look into|notify|analyze|refactor|run|list|complete|start|work on)\b",
     r"\b(send|prepare|review|update|create|write|schedule|reach out|check|handle|compile|draft)\b.{0,40}\bby\b.{0,30}\b(monday|tuesday|wednesday|thursday|friday|eod|eow|next week|tomorrow|today)\b",
     r"\bresponsible for\b",
@@ -91,14 +224,12 @@ _ACTION_PATTERNS = [
     r"\bmake sure\b",
     r"\bdeadline\b",
     r"\bdue (by|on|date)\b",
-    # "should" only triggers action when paired with personal task verbs
     r"\bshould\b.{0,40}\b(send|prepare|review|update|create|write|schedule|set up|follow|reach out|check)\b",
 ]
 
 _DECISION_RE = [re.compile(p, re.IGNORECASE) for p in _DECISION_PATTERNS]
 _ACTION_RE   = [re.compile(p, re.IGNORECASE) for p in _ACTION_PATTERNS]
 
-# Strong signals for each class — these override score ties
 _STRONG_ACTION = re.compile(
     r"\bI('ll| will)\b.{0,80}\bby\b.{0,30}\b(monday|tuesday|wednesday|thursday|friday|eod|eow|next week|tomorrow|today)\b"
     r"|\bI('ll| will) (send|compile|draft|notify|analyze|refactor|run|complete|start|work on)\b",
@@ -118,6 +249,11 @@ _DEADLINE_HINT = re.compile(
     re.IGNORECASE,
 )
 
+# Detect "Name, do X" addressed-name pattern for owner extraction
+_ADDRESSED_NAME_RE = re.compile(
+    r"^([A-Z][a-z]+(?: [A-Z][a-z]+)?),\s+",
+)
+
 
 def _classify_sentence(text: str) -> str:
     d_score = sum(1 for r in _DECISION_RE if r.search(text))
@@ -126,23 +262,18 @@ def _classify_sentence(text: str) -> str:
     if d_score == 0 and a_score == 0:
         return "GENERAL"
 
-    # Strong action signal: personal "I'll X by Y" always wins
     if _STRONG_ACTION.search(text):
         return "ACTION"
 
-    # Strong decision signal: group directive or affirmation always wins
     if _STRONG_DECISION.search(text):
         return "DECISION"
 
-    # Sentence has a deadline → lean action
     if _DEADLINE_HINT.search(text) and a_score > 0:
         return "ACTION"
 
-    # Short affirmative sentences lean decision
     if len(text.split()) <= 10 and d_score > 0:
         return "DECISION"
 
-    # Decisions win ties
     if d_score >= a_score:
         return "DECISION"
     return "ACTION"
@@ -156,13 +287,21 @@ _FIRST_PERSON = re.compile(r"\b(I|I'll|I've|I am|I will|me)\b", re.IGNORECASE)
 
 
 def _extract_owner(sentence_text: str, doc, speaker) -> str | None:
+    # "Name, please do X" → addressed person is the owner
+    m = _ADDRESSED_NAME_RE.match(sentence_text)
+    if m:
+        return m.group(1).strip()
+
     persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
     if persons:
         return persons[0]
+
     if _FIRST_PERSON.search(sentence_text) and speaker:
         return speaker
+
     if speaker:
         return speaker
+
     return None
 
 
@@ -245,16 +384,20 @@ def _build_summary(sentences: list, max_sentences: int = 3) -> str:
 async def extract(raw_text: str, segments: list) -> dict:
     """Drop-in async replacement for extractor.extract(). No Ollama needed."""
 
-    speaker_map = _build_speaker_map(segments)
+    # ── Step 1: parse the closing recap first (highest confidence) ─────────────
+    recap_decisions, recap_actions = _parse_closing_recap(segments)
 
-    # Process each segment individually to avoid sentence boundary issues
-    # with the blank model fallback
-    decisions    = []
-    action_items = []
-    all_sentences = []
+    # Track fingerprints to avoid NLP duplicating recap items
+    recap_dec_fps = {_fingerprint(d["description"]) for d in recap_decisions}
+    recap_act_fps = {_fingerprint(a["what"])        for a in recap_actions}
 
-    dec_id = 1
-    act_id = 1
+    # ── Step 2: NLP pass over all segments ────────────────────────────────────
+    decisions:    list[dict] = []
+    action_items: list[dict] = []
+    all_sentences: list[str] = []
+
+    dec_id = len(recap_decisions) + 1
+    act_id = len(recap_actions)   + 1
 
     for seg in segments:
         text    = seg.get("text", "").strip()
@@ -264,7 +407,6 @@ async def extract(raw_text: str, segments: list) -> dict:
 
         doc = _nlp(text)
 
-        # Iterate sentences — if sentencizer gives only one sent, that's fine
         for sent in doc.sents:
             sent_text = sent.text.strip()
             if len(sent_text) < 10:
@@ -275,33 +417,48 @@ async def extract(raw_text: str, segments: list) -> dict:
             sent_doc = _nlp(sent_text)
 
             if label == "DECISION":
+                desc = _clean(sent_text)
+                if _fingerprint(desc) in recap_dec_fps:
+                    continue   # already captured from recap
                 persons = [e.text for e in sent_doc.ents if e.label_ == "PERSON"]
                 made_by = persons[0] if persons else speaker
                 decisions.append({
                     "id":          dec_id,
-                    "description": _clean(sent_text),
+                    "description": desc,
                     "made_by":     made_by,
                     "context":     sent_text,
                 })
                 dec_id += 1
 
             elif label == "ACTION":
+                what = _clean(sent_text)
+                if _fingerprint(what) in recap_act_fps:
+                    continue   # already captured from recap
                 owner    = _extract_owner(sent_text, sent_doc, speaker)
                 deadline = _extract_deadline(sent_text, sent_doc)
                 action_items.append({
                     "id":      act_id,
-                    "what":    _clean(sent_text),
+                    "what":    what,
                     "who":     owner,
                     "by_when": deadline,
                     "context": sent_text,
                 })
                 act_id += 1
 
+    # ── Step 3: merge — recap items first (they are most reliable) ────────────
+    # Re-number everything sequentially
+    all_decisions = recap_decisions + decisions
+    all_actions   = recap_actions   + action_items
+    for i, d in enumerate(all_decisions, 1):
+        d["id"] = i
+    for i, a in enumerate(all_actions, 1):
+        a["id"] = i
+
     summary = _build_summary(all_sentences, max_sentences=4)
 
     return {
-        "decisions":    decisions,
-        "action_items": action_items,
+        "decisions":    all_decisions,
+        "action_items": all_actions,
         "summary":      summary,
     }
 
@@ -324,6 +481,11 @@ def _find_speaker(sentence: str, speaker_map: list):
         if fingerprint[:30] in sentence_lower or sentence_lower[:30] in fingerprint:
             return speaker
     return None
+
+
+def _fingerprint(text: str) -> str:
+    """Normalised lowercase key for de-duplication."""
+    return re.sub(r"\s+", " ", text.lower().strip())[:80]
 
 
 def _clean(text: str) -> str:

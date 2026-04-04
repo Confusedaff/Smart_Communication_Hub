@@ -482,7 +482,18 @@ async def clear_chat_history(session_id: str):
 async def export_csv(session_id: str):
     session    = _require_session(session_id)
     extraction = _require_extraction(session)
-    csv_bytes  = export.to_csv(extraction, session["filename"])
+    session_meta = {
+        "session_id":        session["id"],
+        "filename":          session["filename"],
+        "created_at":        session.get("created_at"),
+        "last_accessed":     session.get("last_accessed"),
+        "segment_count":     len(session["segments"]),
+        "char_count":        len(session["raw_text"]),
+        "speakers":          _unique_speakers(session["segments"]),
+        "extraction_engine": session.get("extraction_engine", "—"),
+        "chat_turns":        len(session["chat_history"]) // 2,
+    }
+    csv_bytes = export.to_csv(extraction, session["filename"], session_meta)
     return StreamingResponse(
         io.BytesIO(csv_bytes),
         media_type="text/csv",
@@ -494,8 +505,19 @@ async def export_csv(session_id: str):
 async def export_pdf(session_id: str):
     session    = _require_session(session_id)
     extraction = _require_extraction(session)
+    session_meta = {
+        "session_id":        session["id"],
+        "filename":          session["filename"],
+        "created_at":        session.get("created_at"),
+        "last_accessed":     session.get("last_accessed"),
+        "segment_count":     len(session["segments"]),
+        "char_count":        len(session["raw_text"]),
+        "speakers":          _unique_speakers(session["segments"]),
+        "extraction_engine": session.get("extraction_engine", "—"),
+        "chat_turns":        len(session["chat_history"]) // 2,
+    }
     try:
-        pdf_bytes = export.to_pdf(extraction, session["filename"])
+        pdf_bytes = export.to_pdf(extraction, session["filename"], session_meta)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     return StreamingResponse(
