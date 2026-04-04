@@ -70,7 +70,7 @@ void UploadWidget::setupUi() {
     // ── Drop zone ──────────────────────────────────────────────────────────
     m_dropZone = new QWidget(this);
     m_dropZone->setObjectName("DropZone");
-    m_dropZone->setFixedSize(560, 260);
+    m_dropZone->setFixedSize(560, 300);
     m_dropZone->setStyleSheet(
         "QWidget#DropZone {"
         "  background-color: #1a1f2e;"
@@ -86,7 +86,8 @@ void UploadWidget::setupUi() {
     // Drop icon (document unicode)
     m_dropIcon = new QLabel("📄", m_dropZone);
     m_dropIcon->setAlignment(Qt::AlignCenter);
-    m_dropIcon->setStyleSheet("font-size: 40px; background: transparent;");
+    m_dropIcon->setStyleSheet("font-size: 48px; background: transparent;");
+    m_dropIcon->setMinimumHeight(56);
 
     m_dropLabel = new QLabel("Drop your transcript here", m_dropZone);
     m_dropLabel->setAlignment(Qt::AlignCenter);

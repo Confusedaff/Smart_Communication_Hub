@@ -37,20 +37,21 @@ void ExtractionPanel::setupUi() {
     m_contentWidget = new QWidget;
     m_contentWidget->setStyleSheet("background:#0f1117;");
     auto* contentLayout = new QVBoxLayout(m_contentWidget);
-    contentLayout->setContentsMargins(24, 24, 24, 24);
+    contentLayout->setContentsMargins(24, 16, 24, 24);
     contentLayout->setSpacing(20);
 
     // Loading state widget
-    auto* loadingWidget = new QWidget(m_contentWidget);
-    loadingWidget->setStyleSheet("background:transparent;");
-    auto* loadingLayout = new QVBoxLayout(loadingWidget);
+    m_loadingWidget = new QWidget(m_contentWidget);
+    m_loadingWidget->setStyleSheet("background:transparent;");
+    auto* loadingLayout = new QVBoxLayout(m_loadingWidget);
     loadingLayout->setAlignment(Qt::AlignCenter);
     loadingLayout->addStretch();
     loadingLayout->addWidget(m_spinner, 0, Qt::AlignCenter);
     loadingLayout->addWidget(m_loadingLabel, 0, Qt::AlignCenter);
     loadingLayout->addStretch();
-    loadingWidget->setMinimumHeight(200);
-    contentLayout->addWidget(loadingWidget);
+    m_loadingWidget->setMinimumHeight(200);
+    contentLayout->addWidget(m_loadingWidget);
+    m_loadingWidget->hide();
     m_spinner->hide(); m_loadingLabel->hide();
 
     // ── Summary card ─────────────────────────────────────────────────────────
@@ -150,6 +151,7 @@ void ExtractionPanel::setupUi() {
 }
 
 void ExtractionPanel::setExtracting(bool on) {
+    m_loadingWidget->setVisible(on);
     m_spinner->setVisible(on);
     m_loadingLabel->setVisible(on);
     if (on) m_spinner->start();
@@ -244,8 +246,9 @@ void ExtractionPanel::buildDecisionsTable(const QList<Decision>& decisions) {
             );
             auto* cellWidget = new QWidget;
             auto* cellLayout = new QHBoxLayout(cellWidget);
-            cellLayout->setContentsMargins(8, 4, 8, 4);
+            cellLayout->setContentsMargins(4, 2, 4, 2);
             cellLayout->addWidget(badge, 0, Qt::AlignLeft | Qt::AlignVCenter);
+            cellWidget->setLayout(cellLayout);
             m_decisionsTable->setCellWidget(row, 2, cellWidget);
         } else {
             auto* item = new QTableWidgetItem("—");
@@ -309,8 +312,9 @@ void ExtractionPanel::buildActionItemsTable(const QList<ActionItem>& actions) {
             );
             auto* cellWidget = new QWidget;
             auto* cellLayout = new QHBoxLayout(cellWidget);
-            cellLayout->setContentsMargins(8, 4, 8, 4);
+            cellLayout->setContentsMargins(4, 2, 4, 2);
             cellLayout->addWidget(badge, 0, Qt::AlignLeft | Qt::AlignVCenter);
+            cellWidget->setLayout(cellLayout);
             m_actionsTable->setCellWidget(row, 2, cellWidget);
         } else {
             auto* item = new QTableWidgetItem("Unassigned");

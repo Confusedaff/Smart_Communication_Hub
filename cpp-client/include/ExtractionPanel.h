@@ -43,6 +43,7 @@ private:
     // Loading
     LoadingSpinner* m_spinner;
     QLabel*         m_loadingLabel;
+    QWidget*        m_loadingWidget;
     QWidget*        m_contentWidget;
 
     QScrollArea*    m_scroll;
