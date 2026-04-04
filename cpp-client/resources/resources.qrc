@@ -1,0 +1,18 @@
+<RCC>
+    <qresource prefix="/">
+
+        <!--
+            FONTS — JetBrains Mono
+            ─────────────────────
+            To enable:
+              1. Download JetBrains Mono from https://www.jetbrains.com/legalnotice/
+              2. Create a  fonts/  folder next to this file
+              3. Place JetBrainsMono-Regular.ttf and JetBrainsMono-Bold.ttf inside it
+              4. Uncomment the two lines below
+
+        <file>fonts/JetBrainsMono-Regular.ttf</file>
+        <file>fonts/JetBrainsMono-Bold.ttf</file>
+        -->
+
+    </qresource>
+</RCC>

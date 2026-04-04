@@ -1,0 +1,84 @@
+cmake_minimum_required(VERSION 3.20)
+project(MeetingIntelligenceHub VERSION 1.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+# Try Qt6 first, fall back to Qt5
+find_package(Qt6 COMPONENTS Core Gui Widgets Network QUIET)
+if(NOT Qt6_FOUND)
+    find_package(Qt5 5.15 COMPONENTS Core Gui Widgets Network REQUIRED)
+    set(QT_VERSION_MAJOR 5)
+    message(STATUS "Using Qt5")
+else()
+    set(QT_VERSION_MAJOR 6)
+    message(STATUS "Using Qt6")
+endif()
+
+set(SOURCES
+    src/main.cpp
+    src/MainWindow.cpp
+    src/UploadWidget.cpp
+    src/ExtractionPanel.cpp
+    src/ChatPanel.cpp
+    src/TranscriptPanel.cpp
+    src/Sidebar.cpp
+    src/ApiClient.cpp
+    src/AnimatedBackground.cpp
+    src/StyleSheet.cpp
+    src/LoadingSpinner.cpp
+    src/TagBadge.cpp
+    src/StatCard.cpp
+    src/TimingWidget.cpp
+)
+
+set(HEADERS
+    include/MainWindow.h
+    include/UploadWidget.h
+    include/ExtractionPanel.h
+    include/ChatPanel.h
+    include/TranscriptPanel.h
+    include/Sidebar.h
+    include/ApiClient.h
+    include/AnimatedBackground.h
+    include/StyleSheet.h
+    include/LoadingSpinner.h
+    include/TagBadge.h
+    include/StatCard.h
+    include/TimingWidget.h
+    include/AppState.h
+    include/FlowLayout.h
+)
+
+add_executable(${PROJECT_NAME}
+    ${SOURCES}
+    ${HEADERS}
+    resources/resources.qrc
+)
+
+# Headers in include/, sources in src/
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+if(QT_VERSION_MAJOR EQUAL 6)
+    target_link_libraries(${PROJECT_NAME}
+        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network
+    )
+else()
+    target_link_libraries(${PROJECT_NAME}
+        Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Network
+    )
+endif()
+
+# Platform-specific
+if(WIN32)
+    set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+if(APPLE)
+    set_target_properties(${PROJECT_NAME} PROPERTIES MACOSX_BUNDLE TRUE)
+endif()
