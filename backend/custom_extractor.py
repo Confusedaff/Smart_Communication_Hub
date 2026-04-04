@@ -8,6 +8,27 @@ Key fixes vs original:
   - Recap items take precedence and are de-duplicated against NLP results.
   - Speaker attribution now also checks addressed-name patterns
     ("Name, please do X" → owner = Name).
+
+Fixes for false-positive decisions (v2):
+  - Removed weak decision patterns: "That makes sense", "Works for me",
+    "I suggest", "noted", "How about...?", "yes, weekend..." — these are
+    agreements/questions/rationale, not decisions.
+  - Added _NOT_DECISION_RE and _NOT_ACTION_RE exclusion gates applied
+    BEFORE scoring so ambiguous sentences are rejected early.
+  - _STRONG_DECISION no longer includes suggestion/acknowledgement phrases.
+
+Fixes for false-positive action items (v2):
+  - Removed "make sure", "ensure that", "deadline" (standalone), and
+    "should + verb" as action triggers — these produce false positives on
+    reminders and vague directives without a committed owner.
+  - "Don't forget the deadline is X" is now correctly excluded.
+  - "Let's make sure everything is ready" is now correctly excluded.
+
+Fixes for broken owner extraction (v2):
+  - _FAKE_OWNER_WORDS guard prevents "Yes", "Sure", "Noted" etc. from
+    being returned as owner names (caused by "Yes, I'll..." speaker lines
+    where spaCy or the addressed-name regex matched the filler word).
+  - Applied to both _ADDRESSED_NAME_RE path and spaCy PERSON entity path.
 """
 
 import re
@@ -170,6 +191,7 @@ def _parse_closing_recap(segments: list[dict]) -> tuple[list[dict], list[dict]]:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 _DECISION_PATTERNS = [
+    # Strong commitment / resolution signals
     r"\bwe('ve| have)? decided\b",
     r"\bit('s| is) decided\b",
     r"\bwe('re| are) going (with|to go with)\b",
@@ -187,23 +209,10 @@ _DECISION_PATTERNS = [
     r"\bselected\b",
     r"\bresolved (to|that)\b",
     r"\bmoved forward (with|on)\b",
-    r"\bworks for me\b",
-    r"\bthat (makes|sounds) (sense|good|right|great)\b",
-    r"\bI suggest\b.{0,80}",
-    r"\b(yes|yeah|yep)[,.]?\s+(weekend|we will|we should|let'?s|going ahead|proceed)\b",
-    r"\bgood[,.]?\s+(ensure|make sure|let'?s)\b",
     r"\blet'?s (proceed|go ahead|prioritize|finalize|adopt|use|focus on)\b",
     r"\bwe('ll| will) (proceed|go ahead|prioritize|finalize|adopt|focus on)\b",
-    r"\b(agreed)[.!]?\s*$",
-    r"\b(agreed)[.,]?\s*(add|include|improve|proceed|use|prioritize|finalize)\b",
     r"\b(proceed|proceeding) with\b",
-    r"\bwe (should|need to|must|have to) (improve|fix|finalize|update|optimize|plan|prioritize|add|include|review|use|proceed|focus|address|resolve)\b",
-    r"\b(the team|everyone) (should|needs? to|must)\b",
-    r"\b(needs?|need) (updating|fixing|improving|finalizing|optimizing|addressing|resolving)\b",
-    r"\bwe should (improve|fix|update|optimize|finalize|add|include|prioritize|address|resolve|plan|review)\b",
-    r"\b(should|must) (improve|fix|update|add|include|prioritize|finalize|optimize|address)\b.{0,50}\b(accessibility|performance|design|documentation|queries|response|bugs?|features?)\b",
-    r"\b(noted)[.!]?\s*$",
-    r"\bhow about\b.{0,40}\?",
+    r"\b(agreed)[.,]?\s*(add|include|improve|proceed|use|prioritize|finalize)\b",
 ]
 
 _ACTION_PATTERNS = [
@@ -220,11 +229,7 @@ _ACTION_PATTERNS = [
     r"\bI('ll| will) (send|prepare|compile|draft|update|create|write|schedule|reach out|check|handle|look into|notify|analyze|refactor|run|list|complete|start|work on)\b",
     r"\b(send|prepare|review|update|create|write|schedule|reach out|check|handle|compile|draft)\b.{0,40}\bby\b.{0,30}\b(monday|tuesday|wednesday|thursday|friday|eod|eow|next week|tomorrow|today)\b",
     r"\bresponsible for\b",
-    r"\bensure (that|the)\b",
-    r"\bmake sure\b",
-    r"\bdeadline\b",
     r"\bdue (by|on|date)\b",
-    r"\bshould\b.{0,40}\b(send|prepare|review|update|create|write|schedule|set up|follow|reach out|check)\b",
 ]
 
 _DECISION_RE = [re.compile(p, re.IGNORECASE) for p in _DECISION_PATTERNS]
@@ -237,15 +242,39 @@ _STRONG_ACTION = re.compile(
 )
 _STRONG_DECISION = re.compile(
     r"\bwe (should|need to|must) (improve|fix|finalize|update|optimize|plan|prioritize|address)\b"
-    r"|\b(needs?|need) (updating|fixing|improving|finalizing|optimizing)\b"
-    r"|\bI suggest\b"
-    r"|\bthat (makes|sounds) sense\b"
-    r"|\bworks for me\b"
-    r"|\b(noted)[.!]?\s*$",
+    r"|\b(needs?|need) (updating|fixing|improving|finalizing|optimizing)\b",
     re.IGNORECASE,
 )
 _DEADLINE_HINT = re.compile(
     r"\bby\s+(tomorrow|friday|monday|tuesday|wednesday|thursday|eod|eow|next week|\d{1,2}[\/\-]\d{1,2})\b",
+    re.IGNORECASE,
+)
+
+# ── Exclusion filters ─────────────────────────────────────────────────────────
+# Sentences matching these are NEVER decisions or action items, regardless of
+# other pattern matches. Ordered from most to least specific.
+_NOT_DECISION_RE = re.compile(
+    r"^(that (makes|sounds) (sense|good|right|great)[.!]?\s*$"          # pure agreement
+    r"|works for me[.!]?\s*$"                                            # pure agreement
+    r"|(yes|yeah|yep|sure|ok|okay|alright)[,.]?\s*$"                    # one-word acknowledgement
+    r"|(good|great|perfect|sounds good|nice)[.!]?\s*$"                  # one-word reaction
+    r"|how about\b.{0,60}\?$"                                            # question / suggestion
+    r"|I suggest\b.{0,120}$"                                             # suggestion, not a decision
+    r"|(noted|understood|got it|makes sense)[.!]?\s*$"                  # acknowledgement
+    r"|don'?t forget\b.{0,120}$"                                         # reminder
+    r"|let'?s make sure\b.{0,120}$"                                      # vague directive
+    r"|let'?s (ensure|be sure|remember)\b.{0,120}$"                     # vague directive
+    r"|\b(yes|yeah)[,.]?\s+(weekend|we will|let'?s|going ahead)\b)",    # reason/rationale
+    re.IGNORECASE,
+)
+
+_NOT_ACTION_RE = re.compile(
+    r"^(don'?t forget\b.{0,120}$"                                        # reminder, not a task
+    r"|let'?s make sure\b.{0,120}$"                                      # vague directive, no owner
+    r"|let'?s (ensure|be sure|remember)\b.{0,120}$"                     # vague directive
+    r"|make sure (everything|it all|all)\b.{0,80}$"                     # too vague
+    r"|please (note|be aware|remember)\b.{0,100}$"                      # reminder not a task
+    r"|(yes|yeah|yep|sure|ok|okay)[,.]?\s*$)",                          # acknowledgement
     re.IGNORECASE,
 )
 
@@ -256,8 +285,21 @@ _ADDRESSED_NAME_RE = re.compile(
 
 
 def _classify_sentence(text: str) -> str:
+    # ── Exclusion gates: reject clearly non-decision / non-action sentences ──
+    if _NOT_DECISION_RE.match(text.strip()) and _NOT_ACTION_RE.match(text.strip()):
+        return "GENERAL"
+
     d_score = sum(1 for r in _DECISION_RE if r.search(text))
     a_score = sum(1 for r in _ACTION_RE   if r.search(text))
+
+    if d_score == 0 and a_score == 0:
+        return "GENERAL"
+
+    # Apply per-class exclusions before scoring
+    if _NOT_ACTION_RE.match(text.strip()):
+        a_score = 0
+    if _NOT_DECISION_RE.match(text.strip()):
+        d_score = 0
 
     if d_score == 0 and a_score == 0:
         return "GENERAL"
@@ -266,12 +308,16 @@ def _classify_sentence(text: str) -> str:
         return "ACTION"
 
     if _STRONG_DECISION.search(text):
+        if _NOT_DECISION_RE.match(text.strip()):
+            return "GENERAL"
         return "DECISION"
 
     if _DEADLINE_HINT.search(text) and a_score > 0:
         return "ACTION"
 
     if len(text.split()) <= 10 and d_score > 0:
+        if _NOT_DECISION_RE.match(text.strip()):
+            return "GENERAL"
         return "DECISION"
 
     if d_score >= a_score:
@@ -285,14 +331,26 @@ def _classify_sentence(text: str) -> str:
 
 _FIRST_PERSON = re.compile(r"\b(I|I'll|I've|I am|I will|me)\b", re.IGNORECASE)
 
+# Words that look like names in "Speaker: Yes, I'll..." patterns but are not
+_FAKE_OWNER_WORDS = re.compile(
+    r"^(yes|yeah|yep|sure|ok|okay|alright|right|good|great|noted|agreed|"
+    r"absolutely|definitely|certainly|of course|sounds good|no problem)$",
+    re.IGNORECASE,
+)
+
 
 def _extract_owner(sentence_text: str, doc, speaker) -> str | None:
     # "Name, please do X" → addressed person is the owner
     m = _ADDRESSED_NAME_RE.match(sentence_text)
     if m:
-        return m.group(1).strip()
+        candidate = m.group(1).strip()
+        if not _FAKE_OWNER_WORDS.match(candidate):
+            return candidate
 
-    persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
+    persons = [
+        ent.text for ent in doc.ents
+        if ent.label_ == "PERSON" and not _FAKE_OWNER_WORDS.match(ent.text.strip())
+    ]
     if persons:
         return persons[0]
 
