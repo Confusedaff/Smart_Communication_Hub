@@ -6,7 +6,7 @@ import '../models/extraction_model.dart';
 import '../models/chat_model.dart';
 
 class ApiService {
-  static String _baseUrl = 'http://10.0.2.2:8000'; // Android emulator default
+  static String _baseUrl = 'http://100.95.213.57:8000'; // Android emulator default
 
   static void setBaseUrl(String url) {
     _baseUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
@@ -110,9 +110,13 @@ class ApiService {
   }
 
   static Future<void> clearChatHistory(String sessionId) async {
-    await http
+    final response = await http
         .delete(Uri.parse('$_baseUrl/sessions/$sessionId/chat/history'))
         .timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) {
+      final error = _parseError(response.body);
+      throw ApiException('Failed to clear chat history: $error');
+    }
   }
 
   // ── Transcript ────────────────────────────────────────────────────────────

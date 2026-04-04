@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_notifier.dart';
 import '../widgets/status_badge.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  /// Pass the currently known session IDs so we can clear their chat history
+  /// without needing an extra network call to list sessions.
+  final List<String> sessionIds;
+
+  const SettingsScreen({super.key, this.sessionIds = const []});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -56,6 +59,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  bool _isClearingHistory = false;
+
   Future<void> _clearAllHistory() async {
     final t = AppTheme.of(context);
     final confirmed = await showDialog<bool>(
@@ -67,7 +72,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: Text('Clear All Chat History',
             style: TextStyle(color: t.textPrimary, fontSize: 16)),
         content: Text(
-            'This will clear all locally cached chat history.',
+            'This will clear chat history for all sessions on the server.',
             style: TextStyle(color: t.textSecondary, fontSize: 13)),
         actions: [
           TextButton(
@@ -81,18 +86,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
-    if (confirmed == true) {
-      final prefs = await SharedPreferences.getInstance();
-      final keys =
-          prefs.getKeys().where((k) => k.startsWith('chat_history_'));
-      for (final k in keys) {
-        await prefs.remove(k);
+
+    if (confirmed != true) return;
+
+    setState(() => _isClearingHistory = true);
+
+    try {
+      // Always fetch the live session list from the server so we don't miss
+      // sessions that were created after this screen was opened, or sessions
+      // that weren't passed in via widget.sessionIds.
+      final fetched = await ApiService.listSessions();
+      final ids = fetched
+          .map((s) => (s['id'] ?? s['session_id'] ?? '') as String)
+          .where((id) => id.isNotEmpty)
+          .toList();
+
+      if (ids.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No sessions found to clear.')),
+          );
+        }
+        return;
       }
+
+      int cleared = 0;
+      int failed = 0;
+      for (final id in ids) {
+        try {
+          await ApiService.clearChatHistory(id);
+          cleared++;
+        } catch (_) {
+          // Session may already have empty history or be unavailable — continue
+          failed++;
+        }
+      }
+
       if (mounted) {
+        final msg = failed == 0
+            ? 'Chat history cleared for $cleared session${cleared == 1 ? '' : 's'}.'
+            : 'Cleared $cleared session${cleared == 1 ? '' : 's'}, $failed could not be reached.';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All chat history cleared.')),
+          SnackBar(content: Text(msg)),
         );
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to clear history: $e'),
+            backgroundColor: t.accentRed,
+          ),
+        );
+      }
+    } finally {
+      // Always reset the loading state, even if we returned early above
+      if (mounted) setState(() => _isClearingHistory = false);
     }
   }
 
@@ -290,7 +339,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: t.textPrimary),
                   decoration: const InputDecoration(
                     labelText: 'Backend URL',
-                    hintText: 'http://10.0.2.2:8000',
+                    hintText: 'http://100.95.213.57:8000',
                   ),
                   onSubmitted: (_) => _saveUrl(),
                 ),
@@ -320,7 +369,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   child: Column(
                     children: [
-                      _hintRow('Android emulator', 'http://10.0.2.2:8000'),
+                      _hintRow('Tailscale', 'http://100.95.213.57:8000'),
                       _hintRow('iOS simulator', 'http://localhost:8000'),
                       _hintRow('Physical device', 'http://<LAN-IP>:8000'),
                       _hintRow('AWS/deployed', 'https://your-domain.com'),
@@ -375,7 +424,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
-          onTap: _clearAllHistory,
+          onTap: _isClearingHistory ? null : _clearAllHistory,
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -388,8 +437,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     color: t.accentRed.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(Icons.delete_sweep_outlined,
-                      color: t.accentRed, size: 20),
+                  child: _isClearingHistory
+                      ? Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: t.accentRed),
+                        )
+                      : Icon(Icons.delete_sweep_outlined,
+                          color: t.accentRed, size: 20),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -398,17 +453,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       Text('Clear All Chat History',
                           style: TextStyle(
-                              color: t.textPrimary,
+                              color: _isClearingHistory
+                                  ? t.textMuted
+                                  : t.textPrimary,
                               fontWeight: FontWeight.w500,
                               fontSize: 14)),
                       const SizedBox(height: 2),
-                      Text('Remove all locally cached conversation history',
+                      Text(
+                          _isClearingHistory
+                              ? 'Clearing…'
+                              : 'Remove conversation history from all sessions',
                           style: TextStyle(
                               color: t.textSecondary, fontSize: 12)),
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right, color: t.textMuted, size: 20),
+                if (!_isClearingHistory)
+                  Icon(Icons.chevron_right, color: t.textMuted, size: 20),
               ],
             ),
           ),

@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_notifier.dart';
 import 'models/session_model.dart';
-import 'screens/upload_screen.dart';
+import 'services/api_service.dart';
+import 'screens/sessions_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/settings_screen.dart';
 
@@ -25,7 +26,6 @@ class MeetingIntelligenceHubApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final notifier = context.watch<ThemeNotifier>();
 
-    // Keep system UI in sync with the active theme's background colour
     final bgColor = notifier.tokens.bgDeep;
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -54,20 +54,44 @@ class _AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<_AppShell> {
+  final List<SessionModel> _sessions = [];
   SessionModel? _activeSession;
 
   void _onUploadSuccess(SessionModel session) {
+    setState(() {
+      _sessions.removeWhere((s) => s.sessionId == session.sessionId);
+      _sessions.insert(0, session);
+      _activeSession = session;
+    });
+  }
+
+  void _onOpen(SessionModel session) {
     setState(() => _activeSession = session);
   }
 
-  void _onNewUpload() {
+  void _onClose() {
     setState(() => _activeSession = null);
+  }
+
+  Future<void> _onDelete(SessionModel session) async {
+    setState(() {
+      _sessions.removeWhere((s) => s.sessionId == session.sessionId);
+      if (_activeSession?.sessionId == session.sessionId) {
+        _activeSession = null;
+      }
+    });
+    try {
+      await ApiService.deleteSession(session.sessionId);
+    } catch (_) {}
   }
 
   void _openSettings() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+      MaterialPageRoute(
+          builder: (_) => SettingsScreen(
+                sessionIds: _sessions.map((s) => s.sessionId).toList(),
+              )),
     );
   }
 
@@ -76,20 +100,17 @@ class _AppShellState extends State<_AppShell> {
     if (_activeSession != null) {
       return DashboardScreen(
         session: _activeSession!,
-        onNewUpload: _onNewUpload,
+        onNewUpload: _onClose,
+        onBack: _onClose,
       );
     }
-    return Scaffold(
-      appBar: AppBar(
-        actions: [
-          IconButton(
-            onPressed: _openSettings,
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
-          ),
-        ],
-      ),
-      body: UploadScreen(onUploadSuccess: _onUploadSuccess),
+
+    return SessionsScreen(
+      sessions: _sessions,
+      onOpen: _onOpen,
+      onDelete: _onDelete,
+      onUploadSuccess: _onUploadSuccess,
+      onOpenSettings: _openSettings,
     );
   }
 }

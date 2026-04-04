@@ -223,6 +223,15 @@ def list_sessions() -> list[dict]:
     ]
 
 
+async def clear_chat_history(session_id: str) -> bool:
+    """Clear the chat history for a session. Returns False if session not found."""
+    if session_id not in _store:
+        return False
+    _store[session_id]["chat_history"] = []
+    await _persist_session(_store[session_id])
+    return True
+
+
 async def delete_session(session_id: str) -> bool:
     existed = _store.pop(session_id, None) is not None
     if existed:

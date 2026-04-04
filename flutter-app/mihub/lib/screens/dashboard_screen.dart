@@ -12,11 +12,13 @@ import 'transcript_tab.dart';
 class DashboardScreen extends StatefulWidget {
   final SessionModel session;
   final VoidCallback onNewUpload;
+  final VoidCallback? onBack;
 
   const DashboardScreen({
     super.key,
     required this.session,
     required this.onNewUpload,
+    this.onBack,
   });
 
   @override
@@ -196,33 +198,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: t.bgCard,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(child: _sheetHandle(t)),
-            const SizedBox(height: 20),
-            Text('Session Details',
-                style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 20),
-            _infoRow(t, Icons.fingerprint, 'Session ID', widget.session.sessionId),
-            _infoRow(t, Icons.insert_drive_file_outlined, 'File', widget.session.filename),
-            _infoRow(t, Icons.segment, 'Segments', '${widget.session.segmentCount}'),
-            _infoRow(t, Icons.text_fields, 'Characters', '${widget.session.charCount}'),
-            _infoRow(t, Icons.people_outline, 'Speakers', widget.session.speakers.join(', ')),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.5,
+        minChildSize: 0.35,
+        maxChildSize: 0.85,
+        builder: (_, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(child: _sheetHandle(t)),
+              const SizedBox(height: 20),
+              Text('Session Details',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 20),
+              _infoRow(t, Icons.fingerprint, 'Session ID', widget.session.sessionId),
+              _infoRow(t, Icons.insert_drive_file_outlined, 'File', widget.session.filename),
+              _infoRow(t, Icons.segment, 'Segments', '${widget.session.segmentCount}'),
+              _infoRow(t, Icons.text_fields, 'Characters', '${widget.session.charCount}'),
+              _infoRow(t, Icons.people_outline, 'Speakers', widget.session.speakers.join(', ')),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -272,6 +281,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   PreferredSizeWidget _buildAppBar() {
     final t = AppTheme.of(context);
     return AppBar(
+      leading: widget.onBack != null
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+              onPressed: widget.onBack,
+              tooltip: 'All transcripts',
+            )
+          : null,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,

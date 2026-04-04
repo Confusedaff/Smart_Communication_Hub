@@ -466,10 +466,9 @@ async def get_chat_history(session_id: str):
 
 @app.delete("/sessions/{session_id}/chat/history", tags=["Chat"])
 async def clear_chat_history(session_id: str):
-    session = _require_session(session_id)
-    session["chat_history"] = []
-    # Persist the cleared history
-    await sessions._persist_session(session)
+    cleared = await sessions.clear_chat_history(session_id)
+    if not cleared:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found.")
     return {"message": "Chat history cleared", "session_id": session_id}
 
 

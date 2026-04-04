@@ -4,4 +4,4 @@ backend/__pycache__
 backend/.env
 python-client/desktop
 python-client
-backend/session.db
+backend\sessions.db
