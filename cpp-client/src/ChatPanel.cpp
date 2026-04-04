@@ -18,66 +18,55 @@ ChatBubble::ChatBubble(const ChatMessage& msg, QWidget* parent) : QWidget(parent
 
 void ChatBubble::buildUserBubble(const ChatMessage& msg) {
     auto* outer = new QHBoxLayout(this);
-    outer->setContentsMargins(0, 0, 0, 0);
-    outer->setSpacing(0);
+    outer->setContentsMargins(8, 4, 8, 4);
+    outer->setSpacing(8);
 
     outer->addStretch();
 
-    auto* rowWidget = new QWidget(this);
-    rowWidget->setStyleSheet("background:transparent;");
-    auto* rowLayout = new QHBoxLayout(rowWidget);
-    rowLayout->setContentsMargins(0, 0, 16, 8);
-    rowLayout->setSpacing(10);
-
-    auto* bubble = new QLabel(msg.content, rowWidget);
+    auto* bubble = new QLabel(msg.content, this);
     bubble->setWordWrap(true);
+    bubble->setMaximumWidth(520);
+    bubble->setTextInteractionFlags(Qt::TextSelectableByMouse);
     bubble->setStyleSheet(
         "QLabel { background:#21262d; color:#e6edf3; border:1px solid #30363d;"
         "border-radius:12px 12px 2px 12px; padding:10px 14px; font-size:12px;"
         "font-family:'JetBrains Mono','Consolas',monospace; }"
     );
-    rowLayout->addWidget(bubble, 1);
+    outer->addWidget(bubble);
 
-    auto* icon = new QLabel("↑", rowWidget);
+    auto* icon = new QLabel("↑", this);
     icon->setFixedSize(32, 32);
     icon->setAlignment(Qt::AlignCenter);
     icon->setStyleSheet(
         "QLabel { background:#3fb950; color:#0d1117; border-radius:16px; font-weight:bold; "
         "font-size:14px; font-family:'JetBrains Mono','Consolas',monospace; }"
     );
-    rowLayout->addWidget(icon, 0, Qt::AlignTop);
-
-    outer->addWidget(rowWidget, 0, Qt::AlignRight | Qt::AlignTop);
+    outer->addWidget(icon, 0, Qt::AlignTop);
 }
 
 void ChatBubble::buildAIBubble(const ChatMessage& msg) {
     auto* outer = new QHBoxLayout(this);
-    outer->setContentsMargins(0, 0, 0, 0);
-    outer->setSpacing(0);
-
-    auto* rowWidget = new QWidget(this);
-    rowWidget->setStyleSheet("background:transparent;");
-    auto* rowLayout = new QHBoxLayout(rowWidget);
-    rowLayout->setContentsMargins(16, 0, 0, 8);
-    rowLayout->setSpacing(10);
+    outer->setContentsMargins(8, 4, 8, 4);
+    outer->setSpacing(8);
 
     // AI avatar
-    auto* avatar = new QLabel("AI", rowWidget);
+    auto* avatar = new QLabel("AI", this);
     avatar->setFixedSize(32, 32);
     avatar->setAlignment(Qt::AlignCenter);
     avatar->setStyleSheet(
         "QLabel { background:#122d20; color:#3fb950; border:1px solid #1a7a4a; border-radius:16px;"
         "font-weight:bold; font-size:10px; font-family:'JetBrains Mono','Consolas',monospace; }"
     );
-    rowLayout->addWidget(avatar, 0, Qt::AlignTop);
+    outer->addWidget(avatar, 0, Qt::AlignTop);
 
     auto* bubbleCol = new QVBoxLayout;
     bubbleCol->setSpacing(8);
     bubbleCol->setContentsMargins(0, 0, 0, 0);
 
     // Message text
-    auto* bubble = new QLabel(msg.content, rowWidget);
+    auto* bubble = new QLabel(msg.content, this);
     bubble->setWordWrap(true);
+    bubble->setTextInteractionFlags(Qt::TextSelectableByMouse);
     bubble->setStyleSheet(
         "QLabel { background:#1a1f2e; color:#e6edf3; border:1px solid #30363d;"
         "border-radius:12px 12px 12px 2px; padding:10px 14px; font-size:12px;"
@@ -89,7 +78,7 @@ void ChatBubble::buildAIBubble(const ChatMessage& msg) {
     if (msg.elapsedSeconds > 0) {
         QString color = msg.elapsedSeconds < 5 ? "#3fb950" : msg.elapsedSeconds < 30 ? "#f0883e" : "#f85149";
         auto* timingBadge = new QLabel(
-            QString("%1s · %2").arg(msg.elapsedSeconds, 0, 'f', 2).arg(msg.backend), rowWidget
+            QString("%1s · %2").arg(msg.elapsedSeconds, 0, 'f', 2).arg(msg.backend), this
         );
         timingBadge->setStyleSheet(
             QString("QLabel { background:#21262d; color:%1; border:1px solid #30363d;"
@@ -101,7 +90,7 @@ void ChatBubble::buildAIBubble(const ChatMessage& msg) {
 
     // Citations
     if (!msg.citations.isEmpty()) {
-        auto* citBox = new QWidget(rowWidget);
+        auto* citBox = new QWidget(this);
         citBox->setStyleSheet(
             "QWidget { background:#1a1f2e; border:1px solid #30363d; border-radius:6px; }"
         );
@@ -143,17 +132,17 @@ void ChatBubble::buildAIBubble(const ChatMessage& msg) {
             );
             row->addWidget(exLbl, 1);
 
-            auto* rowWidget2 = new QWidget(citBox);
-            rowWidget2->setStyleSheet("background:transparent;");
-            rowWidget2->setLayout(row);
-            citLayout->addWidget(rowWidget2);
+            auto* rowWidget = new QWidget(citBox);
+            rowWidget->setStyleSheet("background:transparent;");
+            rowWidget->setLayout(row);
+            citLayout->addWidget(rowWidget);
         }
 
         bubbleCol->addWidget(citBox);
     }
 
-    rowLayout->addLayout(bubbleCol, 1);
-    outer->addWidget(rowWidget, 1, Qt::AlignLeft | Qt::AlignTop);
+    outer->addLayout(bubbleCol, 1);
+    outer->addStretch();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
