@@ -182,12 +182,16 @@ async def list_all_sessions():
 async def get_session(session_id: str):
     session = _require_session(session_id)
     return {
+        # Use session_id (not id) so SessionModel.fromJson works on the Flutter side
+        "session_id":     session["id"],
         "id":             session["id"],
         "filename":       session["filename"],
         "created_at":     session["created_at"],
         "last_accessed":  session.get("last_accessed"),
         "has_extraction": session["extraction"] is not None,
         "segment_count":  len(session["segments"]),
+        "char_count":     len(session["raw_text"]),
+        "speakers":       _unique_speakers(session["segments"]),
         "chat_turns":     len(session["chat_history"]) // 2,
     }
 

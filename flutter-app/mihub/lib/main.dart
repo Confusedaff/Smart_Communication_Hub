@@ -61,7 +61,19 @@ class _AppShellState extends State<_AppShell> {
     setState(() {
       _sessions.removeWhere((s) => s.sessionId == session.sessionId);
       _sessions.insert(0, session);
-      _activeSession = session;
+      _activeSession = session; // navigates to dashboard for real new uploads
+    });
+  }
+
+  /// Called on startup to restore persisted sessions — adds them to the list
+  /// WITHOUT setting _activeSession, so no navigation happens.
+  void _onSessionsRestored(List<SessionModel> sessions) {
+    setState(() {
+      for (final s in sessions) {
+        if (!_sessions.any((e) => e.sessionId == s.sessionId)) {
+          _sessions.add(s);
+        }
+      }
     });
   }
 
@@ -110,6 +122,7 @@ class _AppShellState extends State<_AppShell> {
       onOpen: _onOpen,
       onDelete: _onDelete,
       onUploadSuccess: _onUploadSuccess,
+      onSessionsRestored: _onSessionsRestored,
       onOpenSettings: _openSettings,
     );
   }

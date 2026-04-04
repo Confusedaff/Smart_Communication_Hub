@@ -170,6 +170,19 @@ class ApiService {
     throw ApiException('Failed to list sessions');
   }
 
+  /// Fetches the full detail for a single session.
+  /// The /sessions/{id} endpoint returns segment_count, speakers, char_count
+  /// and other fields needed to build a complete SessionModel.
+  static Future<Map<String, dynamic>> getSessionDetail(String sessionId) async {
+    final response = await http
+        .get(Uri.parse('$_baseUrl/sessions/$sessionId'))
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    }
+    throw ApiException('Failed to get session detail: \${response.statusCode}');
+  }
+
   static Future<void> deleteSession(String sessionId) async {
     await http
         .delete(Uri.parse('$_baseUrl/sessions/$sessionId'))

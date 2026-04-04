@@ -33,6 +33,7 @@ class SessionsScreen extends StatefulWidget {
   final Function(SessionModel) onOpen;
   final Function(SessionModel) onDelete;
   final Function(SessionModel) onUploadSuccess;
+  final Function(List<SessionModel>) onSessionsRestored;
   final VoidCallback onOpenSettings;
 
   const SessionsScreen({
@@ -41,6 +42,7 @@ class SessionsScreen extends StatefulWidget {
     required this.onOpen,
     required this.onDelete,
     required this.onUploadSuccess,
+    required this.onSessionsRestored,
     required this.onOpenSettings,
   });
 
@@ -88,6 +90,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
           _reconnectAttempts = 0;
           _isReconnecting = false;
         });
+        // Restore sessions that the backend persisted — runs silently on every
+        // cold start so the list is never empty after a restart.
+        await _loadSessionsFromServer();
       }
     } catch (_) {
       if (mounted) setState(() => _backendOnline = false);
@@ -134,6 +139,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
               backgroundColor: Colors.green,
             ),
           );
+          await _loadSessionsFromServer();
         }
         return;
       } catch (_) {
@@ -156,6 +162,47 @@ class _SessionsScreenState extends State<SessionsScreen> {
           backgroundColor: Colors.red,
         ),
       );
+    }
+  }
+
+  // ── Session restore ──────────────────────────────────────────────────────
+
+  /// Fetches all sessions from the server and passes new ones to the parent
+  /// via [onSessionsRestored] — NOT [onUploadSuccess].
+  /// This is critical: onUploadSuccess also sets _activeSession which
+  /// navigates to the dashboard, so we must never call it during restore.
+  Future<void> _loadSessionsFromServer() async {
+    try {
+      final serverSessions = await ApiService.listSessions();
+      if (!mounted) return;
+
+      final existingIds = widget.sessions.map((s) => s.sessionId).toSet();
+      final restored = <SessionModel>[];
+
+      for (final raw in serverSessions) {
+        final id = (raw['id'] ?? raw['session_id'] ?? '') as String;
+        if (id.isEmpty || existingIds.contains(id)) continue;
+
+        try {
+          final detail = await ApiService.getSessionDetail(id);
+          restored.add(SessionModel.fromJson(detail));
+        } catch (_) {
+          // Detail fetch failed — add a partial model so it still shows up.
+          restored.add(SessionModel(
+            sessionId: id,
+            filename: (raw['filename'] ?? 'Unknown') as String,
+            segmentCount: 0,
+            speakers: const [],
+            charCount: 0,
+          ));
+        }
+      }
+
+      if (mounted && restored.isNotEmpty) {
+        widget.onSessionsRestored(restored);
+      }
+    } catch (_) {
+      // Silently ignore — list stays empty if server unreachable.
     }
   }
 
