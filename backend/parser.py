@@ -49,11 +49,12 @@ _TIMESTAMP_RE = re.compile(
 )
 _SPEAKER_INLINE_RE = re.compile(r"^<v\s+([^>]+)>(.*)</v>$", re.DOTALL)
 _SPEAKER_COLON_RE  = re.compile(r"^([A-Za-z][A-Za-z0-9 _\-]{0,39}):\s+(.+)$", re.DOTALL)
-_NOTE_RE           = re.compile(r"^NOTE\b", re.MULTILINE)
-_STYLE_RE          = re.compile(r"^STYLE\b", re.MULTILINE)
-_REGION_RE         = re.compile(r"^REGION\b", re.MULTILINE)
-_CUE_ID_RE         = re.compile(r"^\d+$")
 _HTML_TAG_RE       = re.compile(r"<[^>]+>")
+
+# Raw string patterns for NOTE / STYLE / REGION blocks (used in re.sub directly)
+_NOTE_PATTERN   = r"NOTE\b"
+_STYLE_PATTERN  = r"STYLE\b"
+_REGION_PATTERN = r"REGION\b"
 
 
 def _parse_vtt(content: str) -> list[dict]:
@@ -64,7 +65,7 @@ def _parse_vtt(content: str) -> list[dict]:
     content = "\n".join(lines)
 
     # Remove NOTE / STYLE / REGION blocks
-    for pattern in (_NOTE_RE, _STYLE_RE, _REGION_RE):
+    for pattern in (_NOTE_PATTERN, _STYLE_PATTERN, _REGION_PATTERN):
         content = re.sub(pattern + r".*?(?=\n\n|\Z)", "", content, flags=re.DOTALL)
 
     segments = []
