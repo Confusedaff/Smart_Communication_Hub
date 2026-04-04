@@ -77,9 +77,9 @@ void MainWindow::setupUi() {
     // ── Top bar (tab bar + timing widget) ─────────────────────────────────────
     m_topBar = new QWidget(m_mainArea);
     m_topBar->setObjectName("TabBar");
-    m_topBar->setFixedHeight(48);
+    m_topBar->setFixedHeight(56);
     m_topBar->setStyleSheet(
-        "QWidget#TabBar { background:#161b22; border-bottom:1px solid #30363d; }"
+        "QWidget#TabBar { background:#161b22; border-bottom:1px solid #30363d; border-left:1px solid #30363d; }"
     );
     auto* topBarLayout = new QHBoxLayout(m_topBar);
     topBarLayout->setContentsMargins(0, 0, 16, 0);
@@ -91,7 +91,7 @@ void MainWindow::setupUi() {
         btn->setObjectName("TabBtn");
         btn->setStyleSheet(MIHStyle::tabBarStyle());
         btn->setCursor(Qt::PointingHandCursor);
-        btn->setFixedHeight(48);
+        btn->setFixedHeight(56);
         return btn;
     };
 
