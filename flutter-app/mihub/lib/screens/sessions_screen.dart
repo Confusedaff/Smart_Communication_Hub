@@ -242,43 +242,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
     );
   }
 
-  void _openSettingsSheet() {
-    final t = AppTheme.of(context);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Container(
-          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          decoration: BoxDecoration(
-            color: t.bgCard,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: t.border),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 8),
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: t.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                    20, 8, 20, MediaQuery.of(context).viewInsets.bottom + 24),
-                child: _buildBackendCard(t),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   void _confirmDelete(SessionModel session) {
     final t = AppTheme.of(context);
@@ -553,6 +516,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
   // ── Backend card (reused in settings sheet) ───────────────────────────────
 
+  // ignore: unused_element
   Widget _buildBackendCard(AppThemeTokens t) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
