@@ -180,6 +180,20 @@ async def _groq_with_retry(coro_fn, *args, max_attempts: int = 5, **kwargs):
                 raise
             if _is_rate_limit(exc):
                 wait = _retry_after_seconds(exc, attempt)
+                if wait > 60:
+                    logger.error(
+                        f"[LLM] Groq 429 Retry-After={wait:.0f}s — daily limit likely exhausted. "
+                        "Failing fast instead of waiting."
+                    )
+                    print(
+                        f"\n🚫 Groq rate limit: server asked us to wait {wait:.0f}s "
+                        f"(~{wait/60:.0f} min) — daily quota likely exhausted.\n"
+                        "   Failing fast. Try again tomorrow or switch to Ollama.\n"
+                    )
+                    raise RuntimeError(
+                        f"Groq daily rate limit exhausted (Retry-After: {wait:.0f}s). "
+                        "Please try again tomorrow or configure a local Ollama model."
+                    ) from exc
                 logger.warning(
                     f"[LLM] Groq 429 rate-limited — retrying in {wait:.1f}s "
                     f"(attempt {attempt + 1}/{max_attempts})"
@@ -374,6 +388,20 @@ async def _groq_stream_with_retry(messages, temperature, max_tokens, max_attempt
                 raise
             if _is_rate_limit(exc) or True:   # retry on any stream error
                 wait = _retry_after_seconds(exc, attempt)
+                if _is_rate_limit(exc) and wait > 60:
+                    logger.error(
+                        f"[LLM:stream] Groq 429 Retry-After={wait:.0f}s — daily limit likely exhausted. "
+                        "Failing fast instead of waiting."
+                    )
+                    print(
+                        f"\n🚫 Groq rate limit: server asked us to wait {wait:.0f}s "
+                        f"(~{wait/60:.0f} min) — daily quota likely exhausted.\n"
+                        "   Failing fast. Try again tomorrow or switch to Ollama.\n"
+                    )
+                    raise RuntimeError(
+                        f"Groq daily rate limit exhausted (Retry-After: {wait:.0f}s). "
+                        "Please try again tomorrow or configure a local Ollama model."
+                    ) from exc
                 logger.warning(
                     f"[LLM:stream] Groq error ({exc}) — retrying in {wait:.1f}s "
                     f"(attempt {attempt + 1}/{max_attempts})"
