@@ -8,6 +8,8 @@ import '../theme/app_theme.dart';
 import 'extraction_tab.dart';
 import 'chat_tab.dart';
 import 'transcript_tab.dart';
+import 'action_items_tab.dart';
+import 'analytics_tab.dart';
 
 class DashboardScreen extends StatefulWidget {
   final SessionModel session;
@@ -29,6 +31,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
   String _engine = 'llm';
   bool _isExporting = false;
+  int _alertCount = 0;
 
   Future<void> _exportCsv() async {
     setState(() => _isExporting = true);
@@ -70,7 +73,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _onNavTap(int index) {
-    if (index == 3) {
+    if (index == 5) {
       widget.onNewUpload();
     } else {
       setState(() => _selectedIndex = index);
@@ -270,6 +273,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         index: _selectedIndex,
         children: [
           ExtractionTab(sessionId: widget.session.sessionId, engine: _engine),
+          ActionItemsTab(
+            sessionId: widget.session.sessionId,
+            onAlertCount: (count) => setState(() => _alertCount = count),
+          ),
+          AnalyticsTab(sessionId: widget.session.sessionId),
           ChatTab(sessionId: widget.session.sessionId),
           TranscriptTab(sessionId: widget.session.sessionId),
         ],
@@ -350,23 +358,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: _onNavTap,
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
             icon: Icon(Icons.bolt_outlined),
             selectedIcon: Icon(Icons.bolt_rounded),
             label: 'Extract',
           ),
           NavigationDestination(
+            icon: _alertCount > 0
+                ? Badge(
+                    label: Text('$_alertCount'),
+                    child: const Icon(Icons.task_alt_outlined),
+                  )
+                : const Icon(Icons.task_alt_outlined),
+            selectedIcon: _alertCount > 0
+                ? Badge(
+                    label: Text('$_alertCount'),
+                    child: const Icon(Icons.task_alt_rounded),
+                  )
+                : const Icon(Icons.task_alt_rounded),
+            label: 'Actions',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart_rounded),
+            label: 'Analytics',
+          ),
+          const NavigationDestination(
             icon: Icon(Icons.chat_bubble_outline),
             selectedIcon: Icon(Icons.chat_bubble_rounded),
             label: 'Chat',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.article_outlined),
             selectedIcon: Icon(Icons.article_rounded),
             label: 'Transcript',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.add_circle_outline),
             selectedIcon: Icon(Icons.add_circle_rounded),
             label: 'New',

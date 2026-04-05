@@ -7,6 +7,8 @@
 #include "UploadWidget.h"
 #include "Sidebar.h"
 #include "ExtractionPanel.h"
+#include "ActionItemsPanel.h"
+#include "AnalyticsPanel.h"
 #include "ChatPanel.h"
 #include "TranscriptPanel.h"
 #include "TimingWidget.h"
@@ -64,9 +66,12 @@ private:
     QWidget*        m_topBar         = nullptr;
     QStackedWidget* m_panelStack     = nullptr;
 
-    // Panels
-    ExtractionPanel* m_extractionPanel = nullptr;
-    ChatPanel*       m_chatPanel       = nullptr;
-    TranscriptPanel* m_transcriptPanel = nullptr;
-    TimingWidget*    m_timingWidget    = nullptr;
+    // Panels (indices 0-4 in m_panelStack)
+    ExtractionPanel*  m_extractionPanel  = nullptr;  // 0
+    ActionItemsPanel* m_actionItemsPanel = nullptr;  // 1
+    AnalyticsPanel*   m_analyticsPanel   = nullptr;  // 2
+    ChatPanel*        m_chatPanel        = nullptr;  // 3
+    TranscriptPanel*  m_transcriptPanel  = nullptr;  // 4
+
+    TimingWidget*     m_timingWidget     = nullptr;
 };

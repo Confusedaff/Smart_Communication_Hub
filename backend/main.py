@@ -139,6 +139,11 @@ class ChatResponse(BaseModel):
     timing: dict | None = None
 
 
+class ActionItemStatusUpdate(BaseModel):
+    status: str          # pending | in_progress | done | blocked
+    note: str | None = None
+
+
 # ── Health & status ───────────────────────────────────────────────────────────
 
 @app.get("/", tags=["Health"])
@@ -474,6 +479,110 @@ async def clear_chat_history(session_id: str):
     if not cleared:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found.")
     return {"message": "Chat history cleared", "session_id": session_id}
+
+
+# ── Speaker analytics ─────────────────────────────────────────────────────────
+
+@app.get("/sessions/{session_id}/analytics", tags=["Analytics"])
+async def get_speaker_analytics(session_id: str):
+    """
+    Returns per-speaker talk share, question count, action items assigned,
+    and decisions made. Useful for rendering a speaker analytics dashboard.
+    """
+    _require_session(session_id)
+    analytics = sessions.get_speaker_analytics(session_id)
+    if analytics is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return analytics
+
+
+# ── Action item status tracking ───────────────────────────────────────────────
+
+@app.get("/sessions/{session_id}/action-items", tags=["Action Items"])
+async def get_action_items(session_id: str):
+    """
+    Return all action items for a session enriched with their current status
+    (pending / in_progress / done / blocked) and any notes.
+    """
+    _require_session(session_id)
+    items = sessions.get_enriched_action_items(session_id)
+    statuses_summary = {
+        s: sum(1 for i in items if i.get("status") == s)
+        for s in sessions.VALID_STATUSES
+    }
+    return {
+        "session_id":  session_id,
+        "action_items": items,
+        "totals":       statuses_summary,
+    }
+
+
+@app.patch("/sessions/{session_id}/action-items/{item_id}/status", tags=["Action Items"])
+async def update_action_item_status(
+    session_id: str,
+    item_id: int,
+    body: ActionItemStatusUpdate,
+):
+    """
+    Update the status of a single action item.
+    status must be one of: pending, in_progress, done, blocked.
+    Optionally attach a short note (e.g. blocker reason).
+    """
+    _require_session(session_id)
+    try:
+        updated = await sessions.set_action_item_status(
+            session_id, item_id, body.status, body.note
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if updated is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Action item {item_id} not found in session '{session_id}'."
+        )
+    return {
+        "session_id": session_id,
+        "item_id":    item_id,
+        **updated,
+    }
+
+
+@app.get("/sessions/{session_id}/action-items/{item_id}/status", tags=["Action Items"])
+async def get_action_item_status(session_id: str, item_id: int):
+    """Get the current status of a single action item."""
+    _require_session(session_id)
+    statuses = sessions.get_action_item_statuses(session_id)
+    entry = statuses.get(item_id)
+    return {
+        "session_id": session_id,
+        "item_id":    item_id,
+        "status":     entry["status"]     if entry else "pending",
+        "note":       entry.get("note")   if entry else None,
+        "updated_at": entry["updated_at"] if entry else None,
+    }
+
+
+# ── Deadline proximity alerts ─────────────────────────────────────────────────
+
+@app.get("/sessions/{session_id}/action-items/alerts", tags=["Action Items"])
+async def get_deadline_alerts(
+    session_id: str,
+    warning_days: int = Query(3, description="Flag items due within this many days"),
+):
+    """
+    Scan action items for upcoming or overdue deadlines.
+    Returns items grouped into: overdue, due_soon, upcoming, no_date, unparseable.
+    Items with status='done' are excluded.
+    """
+    _require_session(session_id)
+    alerts = sessions.get_deadline_alerts(session_id, warning_days=warning_days)
+    if alerts is None:
+        raise HTTPException(
+            status_code=409,
+            detail="No extraction found. Run GET /sessions/{session_id}/extract first.",
+        )
+    return alerts
 
 
 # ── Export ────────────────────────────────────────────────────────────────────

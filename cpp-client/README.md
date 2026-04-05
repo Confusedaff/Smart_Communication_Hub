@@ -17,6 +17,14 @@ Matches all UI screenshots: animated upload page, extraction panel, chatbot, tra
 
 ---
 
+## What's New (v1.3.0)
+
+- **Action Items Panel** — Full task tracker tab (✅ Actions) with live progress bar, 2×2 status counter grid (Pending / In Progress / Done / Blocked), overdue and due-soon alert banners, configurable warning window (1–14 days), per-item status picker menu synced to the backend via `PATCH`, and deadline-first sorting.
+- **Analytics Panel** — Meeting analytics tab (📊 Analytics) with stat cards (total turns, speakers, avg turn length, engagement score), per-speaker talk-time bars with word counts and percentages, overall and per-speaker sentiment indicators, key-topic badges, and a participation breakdown table.
+- **API additions** — `ApiClient` now covers `GET /action-items`, `PATCH /action-items/{id}/status`, `GET /action-items/alerts`, and `GET /analytics`, all with the correct signal/error wiring.
+- **5-tab navigation** — Sidebar and top bar now show Extract → Actions → Analytics → Chatbot → Transcript in both the sidebar and the top tab bar.
+- **AppState extended** — `Session` gained `hasActionItems` and `hasAnalytics` flags so each panel lazy-loads only once per session, just like extraction.
+
 ## What's New (v1.2.0)
 
 - **Green scrollbars** — All scroll areas now use the app's accent green (`#3fb950` / `#1a7a4a`) instead of the default grey, matching the sidebar, badges, and buttons throughout the UI.
@@ -101,26 +109,30 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 MeetingIntelligenceHub/
 ├── CMakeLists.txt
 ├── include/
-│   ├── AppState.h          — Shared data structures
-│   ├── MainWindow.h        — Main orchestrator window
-│   ├── UploadWidget.h      — Drag-and-drop upload page
-│   ├── Sidebar.h           — Left navigation panel
-│   ├── ExtractionPanel.h   — Decisions + action items tables
-│   ├── ChatPanel.h         — AI Q&A chat interface
-│   ├── TranscriptPanel.h   — Colour-coded speaker view
-│   ├── ApiClient.h         — Async HTTP client (all endpoints)
-│   ├── AnimatedBackground.h— Animated grid background
-│   ├── LoadingSpinner.h    — Circular loading animation
-│   ├── StatCard.h          — Metric cards (decisions count, etc.)
-│   ├── TagBadge.h          — Coloured pill badges
-│   ├── TimingWidget.h      — Backend + timing indicator
-│   └── StyleSheet.h        — All QSS dark theme styles
+│   ├── AppState.h              — Shared data structures (Session, ActionItemData, …)
+│   ├── MainWindow.h            — Main orchestrator window
+│   ├── UploadWidget.h          — Drag-and-drop upload page
+│   ├── Sidebar.h               — Left navigation panel (5 tabs)
+│   ├── ExtractionPanel.h       — Decisions + action items tables
+│   ├── ActionItemsPanel.h      — Action item tracker with status, progress, alerts
+│   ├── AnalyticsPanel.h        — Meeting analytics dashboard
+│   ├── ChatPanel.h             — AI Q&A chat interface
+│   ├── TranscriptPanel.h       — Colour-coded speaker view
+│   ├── ApiClient.h             — Async HTTP client (all endpoints)
+│   ├── AnimatedBackground.h    — Animated grid background
+│   ├── LoadingSpinner.h        — Circular loading animation
+│   ├── StatCard.h              — Metric cards
+│   ├── TagBadge.h              — Coloured pill badges
+│   ├── TimingWidget.h          — Backend + timing indicator
+│   └── StyleSheet.h            — All QSS dark theme styles
 ├── src/
 │   ├── main.cpp
 │   ├── MainWindow.cpp
 │   ├── UploadWidget.cpp
 │   ├── Sidebar.cpp
 │   ├── ExtractionPanel.cpp
+│   ├── ActionItemsPanel.cpp
+│   ├── AnalyticsPanel.cpp
 │   ├── ChatPanel.cpp
 │   ├── TranscriptPanel.cpp
 │   ├── ApiClient.cpp
@@ -138,6 +150,8 @@ MeetingIntelligenceHub/
 | UploadWidget | Animated grid background, drag-and-drop, .TXT/.VTT badges, feature tags |
 | UploadWidget (loading) | Spinner + "Uploading transcript…" state |
 | ExtractionPanel | Summary card, 4 stat cards, decisions table with speaker badges, action items table |
+| ActionItemsPanel | Progress bar + 2×2 status grid, overdue/due-soon alert banners, filter chips, per-card status picker, deadline-first sort |
+| AnalyticsPanel | Stat cards, per-speaker talk-time bars, overall + per-speaker sentiment, topic badges, participation breakdown |
 | ChatPanel | AI/user bubbles (full text, no clipping), citation boxes, timing badge, Groq/Ollama indicator |
 | TranscriptPanel | Colour-coded speaker legend, segment rows, Segments/Plain toggle |
 

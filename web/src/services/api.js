@@ -66,4 +66,22 @@ export const api = {
 
   exportCsvUrl: (sessionId) => `${BASE_URL}/sessions/${sessionId}/export/csv`,
   exportPdfUrl: (sessionId) => `${BASE_URL}/sessions/${sessionId}/export/pdf`,
+
+  // Speaker analytics
+  analytics: (sessionId) =>
+    request("GET", `/sessions/${sessionId}/analytics`).then((r) => r.json()),
+
+  // Action items with statuses
+  actionItems: (sessionId) =>
+    request("GET", `/sessions/${sessionId}/action-items`).then((r) => r.json()),
+
+  updateActionItemStatus: (sessionId, itemId, status, note = null) =>
+    request("PATCH", `/sessions/${sessionId}/action-items/${itemId}/status`, {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, note }),
+    }).then((r) => r.json()),
+
+  // Deadline alerts
+  deadlineAlerts: (sessionId, warningDays = 3) =>
+    request("GET", `/sessions/${sessionId}/action-items/alerts?warning_days=${warningDays}`).then((r) => r.json()),
 };

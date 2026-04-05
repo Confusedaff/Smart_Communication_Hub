@@ -175,6 +175,55 @@ void ApiClient::deleteSession(const QString& sessionId) {
     });
 }
 
+// ── Action Items ──────────────────────────────────────────────────────────────
+
+void ApiClient::getActionItems(const QString& sessionId) {
+    auto* reply = m_nam->get(makeRequest("/sessions/" + sessionId + "/action-items"));
+    handleReply(reply,
+        [this](const QJsonObject& obj) { emit actionItemsDone(obj); },
+        [this](const QString& err)     { emit actionItemsError(err); }
+    );
+}
+
+void ApiClient::updateActionItemStatus(const QString& sessionId, int itemId, const QString& status) {
+    QJsonObject body;
+    body["status"] = status;
+    QByteArray jsonData = QJsonDocument(body).toJson();
+
+    QNetworkRequest req = makeRequest(
+        "/sessions/" + sessionId + "/action-items/" + QString::number(itemId) + "/status"
+    );
+    req.setRawHeader("X-HTTP-Method-Override", "PATCH");
+    auto* reply = m_nam->sendCustomRequest(req, "PATCH", jsonData);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, itemId, status]() {
+        reply->deleteLater();
+        if (reply->error() == QNetworkReply::NoError)
+            emit actionItemStatusUpdated(itemId, status);
+        else
+            emit actionItemsError(reply->errorString());
+    });
+}
+
+void ApiClient::getDeadlineAlerts(const QString& sessionId, int warningDays) {
+    auto* reply = m_nam->get(makeRequest(
+        "/sessions/" + sessionId + "/action-items/alerts?warning_days=" + QString::number(warningDays)
+    ));
+    handleReply(reply,
+        [this](const QJsonObject& obj) { emit deadlineAlertsDone(obj); },
+        [this](const QString& err)     { Q_UNUSED(err); }
+    );
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+
+void ApiClient::getAnalytics(const QString& sessionId) {
+    auto* reply = m_nam->get(makeRequest("/sessions/" + sessionId + "/analytics"));
+    handleReply(reply,
+        [this](const QJsonObject& obj) { emit analyticsDone(obj); },
+        [this](const QString& err)     { emit analyticsError(err); }
+    );
+}
+
 QUrl ApiClient::csvExportUrl(const QString& sessionId) const {
     return QUrl(m_baseUrl + "/sessions/" + sessionId + "/export/csv");
 }

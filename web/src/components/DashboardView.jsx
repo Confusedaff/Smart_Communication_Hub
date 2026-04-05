@@ -3,12 +3,16 @@ import { api } from "../services/api";
 import ExtractionPanel from "./ExtractionPanel";
 import ChatPanel from "./ChatPanel";
 import TranscriptPanel from "./TranscriptPanel";
+import AnalyticsPanel from "./AnalyticsPanel";
+import ActionItemsPanel from "./ActionItemsPanel";
 import LLMTimingBadge from "./LLMTimingBadge";
 
 const TABS = [
-  { id: "extract",    label: "Extraction", icon: "⚡" },
-  { id: "chat",       label: "Chatbot",    icon: "💬" },
-  { id: "transcript", label: "Transcript", icon: "📄" },
+  { id: "extract",    label: "Extraction",  icon: "⚡" },
+  { id: "actions",    label: "Action Items", icon: "✅" },
+  { id: "analytics",  label: "Analytics",   icon: "📊" },
+  { id: "chat",       label: "Chatbot",     icon: "💬" },
+  { id: "transcript", label: "Transcript",  icon: "📄" },
 ];
 
 export default function DashboardView({ session, onNewUpload, onOpenHistory, sessionCount }) {
@@ -17,14 +21,23 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
   const [extracting,   setExtracting]   = useState(false);
   const [extractError, setExtractError] = useState(null);
   const [engine,       setEngine]       = useState("nlp");
+  const [alertCount,   setAlertCount]   = useState(0);
 
   // Reset state when switching to a different session
   useEffect(() => {
     setExtraction(null);
     setExtractError(null);
     setTab("extract");
+    setAlertCount(0);
     runExtraction(false, engine);
   }, [session.session_id]);
+
+  // Fetch alert count whenever extraction completes
+  useEffect(() => {
+    if (!extraction) return;
+    const sid = session.session_id || session.id;
+    api.deadlineAlerts(sid).then((d) => setAlertCount(d.alert_count || 0)).catch(() => {});
+  }, [extraction]);
 
   const runExtraction = async (force = false, eng = engine) => {
     setExtracting(true);
@@ -75,6 +88,9 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
                 <span className="nav-badge">
                   {(extraction.decisions?.length || 0) + (extraction.action_items?.length || 0)}
                 </span>
+              )}
+              {t.id === "actions" && alertCount > 0 && (
+                <span className="nav-badge nav-badge--alert">{alertCount}</span>
               )}
             </button>
           ))}
@@ -170,6 +186,12 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
         <div className="panel-area">
           {tab === "extract" && (
             <ExtractionPanel extraction={extraction} loading={extracting} error={extractError} />
+          )}
+          {tab === "actions" && (
+            <ActionItemsPanel sessionId={sessionId} extraction={extraction} onAlertCount={setAlertCount} />
+          )}
+          {tab === "analytics" && (
+            <AnalyticsPanel sessionId={sessionId} />
           )}
           {tab === "chat" && (
             <ChatPanel sessionId={sessionId} />

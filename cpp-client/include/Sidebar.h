@@ -56,11 +56,17 @@ private:
     void setupUi();
     void updateEngineButtons(const QString& engine);
 
-    QWidget*    m_sessionArea;
+    QWidget*     m_sessionArea;
     QVBoxLayout* m_sessionLayout;
+
+    // ── Tab navigation buttons (all five tabs) ────────────────────────────────
     QPushButton* m_tabExtraction;
+    QPushButton* m_tabActions;
+    QPushButton* m_tabAnalytics;
     QPushButton* m_tabChatbot;
     QPushButton* m_tabTranscript;
+
+    // ── Engine / export / action buttons ─────────────────────────────────────
     QPushButton* m_btnNLP;
     QPushButton* m_btnLLM;
     QPushButton* m_btnReextract;
@@ -68,6 +74,7 @@ private:
     QPushButton* m_btnPDF;
     QPushButton* m_btnNewTranscript;
     QLabel*      m_timingLabel;
+
     QString      m_activeTab;
     QList<SidebarSessionItem*> m_sessionItems;
 };

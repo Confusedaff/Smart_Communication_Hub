@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(MeetingIntelligenceHub VERSION 1.1.0 LANGUAGES CXX)
+project(MeetingIntelligenceHub VERSION 1.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,6 +23,8 @@ set(SOURCES
     src/MainWindow.cpp
     src/UploadWidget.cpp
     src/ExtractionPanel.cpp
+    src/ActionItemsPanel.cpp
+    src/AnalyticsPanel.cpp
     src/ChatPanel.cpp
     src/TranscriptPanel.cpp
     src/Sidebar.cpp
@@ -39,6 +41,8 @@ set(HEADERS
     include/MainWindow.h
     include/UploadWidget.h
     include/ExtractionPanel.h
+    include/ActionItemsPanel.h
+    include/AnalyticsPanel.h
     include/ChatPanel.h
     include/TranscriptPanel.h
     include/Sidebar.h

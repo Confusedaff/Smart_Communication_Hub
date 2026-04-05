@@ -15,7 +15,7 @@ public:
     void setBaseUrl(const QString& url);
     QString baseUrl() const { return m_baseUrl; }
 
-    // API calls
+    // ── Core API calls ────────────────────────────────────────────────────────
     void checkHealth();
     void uploadTranscript(const QString& filePath);
     void extractFromSession(const QString& sessionId, bool force = false, const QString& engine = "");
@@ -26,13 +26,22 @@ public:
     void getTimingStatus(const QString& task = "chat");
     void deleteSession(const QString& sessionId);
 
-    // Export URLs
+    // ── Action Items ──────────────────────────────────────────────────────────
+    void getActionItems(const QString& sessionId);
+    void updateActionItemStatus(const QString& sessionId, int itemId, const QString& status);
+    void getDeadlineAlerts(const QString& sessionId, int warningDays = 7);
+
+    // ── Analytics ─────────────────────────────────────────────────────────────
+    void getAnalytics(const QString& sessionId);
+
+    // ── Export ────────────────────────────────────────────────────────────────
     QUrl csvExportUrl(const QString& sessionId) const;
     QUrl pdfExportUrl(const QString& sessionId) const;
     void downloadCsv(const QString& sessionId, const QString& savePath);
     void downloadPdf(const QString& sessionId, const QString& savePath);
 
 signals:
+    // Core
     void healthCheckDone(bool ok, const QJsonObject& info);
     void uploadDone(const QString& sessionId, const QJsonObject& data);
     void uploadError(const QString& error);
@@ -47,6 +56,16 @@ signals:
     void sessionDeleted(const QString& sessionId);
     void downloadDone(const QString& path);
     void downloadError(const QString& error);
+
+    // Action Items
+    void actionItemsDone(const QJsonObject& data);
+    void actionItemsError(const QString& error);
+    void actionItemStatusUpdated(int itemId, const QString& status);
+    void deadlineAlertsDone(const QJsonObject& data);
+
+    // Analytics
+    void analyticsDone(const QJsonObject& data);
+    void analyticsError(const QString& error);
 
 private:
     QNetworkAccessManager* m_nam;

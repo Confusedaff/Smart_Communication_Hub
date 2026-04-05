@@ -165,16 +165,21 @@ void Sidebar::setupUi() {
     };
 
     m_tabExtraction = makeNavBtn("⚡", "Extraction");
+    m_tabActions    = makeNavBtn("✅", "Actions");
+    m_tabAnalytics  = makeNavBtn("📊", "Analytics");
     m_tabChatbot    = makeNavBtn("💬", "Chatbot");
     m_tabTranscript = makeNavBtn("📄", "Transcript");
 
-    // Badge showing extraction count on extraction button
     navLayout->addWidget(m_tabExtraction);
+    navLayout->addWidget(m_tabActions);
+    navLayout->addWidget(m_tabAnalytics);
     navLayout->addWidget(m_tabChatbot);
     navLayout->addWidget(m_tabTranscript);
     mainLayout->addWidget(navWidget);
 
     connect(m_tabExtraction, &QPushButton::clicked, this, [this]() { emit tabChanged("extraction"); });
+    connect(m_tabActions,    &QPushButton::clicked, this, [this]() { emit tabChanged("actions"); });
+    connect(m_tabAnalytics,  &QPushButton::clicked, this, [this]() { emit tabChanged("analytics"); });
     connect(m_tabChatbot,    &QPushButton::clicked, this, [this]() { emit tabChanged("chatbot"); });
     connect(m_tabTranscript, &QPushButton::clicked, this, [this]() { emit tabChanged("transcript"); });
 
@@ -337,7 +342,9 @@ void Sidebar::setActiveTab(const QString& tab) {
     };
 
     m_tabExtraction->setStyleSheet(tab == "extraction" ? activeStyle() : inactiveStyle());
-    m_tabChatbot->setStyleSheet(tab == "chatbot" ? activeStyle() : inactiveStyle());
+    m_tabActions->setStyleSheet(tab == "actions"    ? activeStyle() : inactiveStyle());
+    m_tabAnalytics->setStyleSheet(tab == "analytics"  ? activeStyle() : inactiveStyle());
+    m_tabChatbot->setStyleSheet(tab == "chatbot"    ? activeStyle() : inactiveStyle());
     m_tabTranscript->setStyleSheet(tab == "transcript" ? activeStyle() : inactiveStyle());
 }
 

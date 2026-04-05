@@ -183,6 +183,57 @@ class ApiService {
     throw ApiException('Failed to get session detail: \${response.statusCode}');
   }
 
+  // ── Analytics ─────────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getAnalytics(String sessionId) async {
+    final response = await http
+        .get(Uri.parse('$_baseUrl/sessions/$sessionId/analytics'))
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    }
+    throw ApiException('Failed to get analytics: \${response.statusCode}');
+  }
+
+  // ── Action Items ──────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getActionItems(String sessionId) async {
+    final response = await http
+        .get(Uri.parse('$_baseUrl/sessions/$sessionId/action-items'))
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    }
+    throw ApiException('Failed to get action items: \${response.statusCode}');
+  }
+
+  static Future<void> updateActionItemStatus(
+      String sessionId, int itemId, String status) async {
+    final response = await http
+        .patch(
+          Uri.parse('$_baseUrl/sessions/$sessionId/action-items/$itemId/status'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({'status': status}),
+        )
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) {
+      // ignore: unused_local_variable
+      final error = _parseError(response.body);
+      throw ApiException('Failed to update status: \$error');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getDeadlineAlerts(
+      String sessionId, {int warningDays = 3}) async {
+    final response = await http
+        .get(Uri.parse('$_baseUrl/sessions/$sessionId/action-items/alerts?warning_days=$warningDays'))
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    }
+    throw ApiException('Failed to get alerts: \${response.statusCode}');
+  }
+
   static Future<void> deleteSession(String sessionId) async {
     await http
         .delete(Uri.parse('$_baseUrl/sessions/$sessionId'))

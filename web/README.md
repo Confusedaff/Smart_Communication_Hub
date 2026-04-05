@@ -45,18 +45,23 @@ A React + Vite single-page application that provides a polished UI for the Meeti
 ```
 Browser
   │
-  ├── UploadView      → drag-and-drop .txt / .vtt → POST /upload
+  ├── UploadView       → drag-and-drop .txt / .vtt → POST /upload
+  │
+  ├── SessionsDrawer   → GET  /sessions  (slide-in history panel)
   │
   └── DashboardView
-        ├── ExtractionPanel  → GET  /sessions/{id}/extract
-        ├── ChatPanel        → POST /sessions/{id}/chat
-        ├── TranscriptPanel  → GET  /sessions/{id}/transcript
-        └── LLMTimingBadge   → GET  /api/timing/status  (polls every 30s)
+        ├── ExtractionPanel   → GET  /sessions/{id}/extract
+        ├── ActionItemsPanel  → GET  /sessions/{id}/action-items
+        │     └── Alerts      → GET  /sessions/{id}/action-items/alerts
+        ├── AnalyticsPanel    → GET  /sessions/{id}/analytics
+        ├── ChatPanel         → POST /sessions/{id}/chat
+        ├── TranscriptPanel   → GET  /sessions/{id}/transcript
+        └── LLMTimingBadge    → GET  /api/timing/status  (polls every 30s)
               │
-              └── Export     → GET  /sessions/{id}/export/csv|pdf
+              └── Export      → GET  /sessions/{id}/export/csv|pdf
 ```
 
-The app is **stateless on the server side** — all session state lives in memory in the backend. Chat history is additionally cached in `localStorage` so it survives page refreshes within the same browser session.
+The app is **stateless on the server side** — session data is persisted in SQLite on the backend and survives server restarts. Chat history is additionally cached in `localStorage` so it survives page refreshes within the same browser session.
 
 ---
 
@@ -190,6 +195,9 @@ web/
         ├── UploadView.jsx       # Landing page — drag-and-drop file upload
         ├── DashboardView.jsx    # Main shell — sidebar, tabs, top bar
         ├── ExtractionPanel.jsx  # Decisions and action items tables
+        ├── ActionItemsPanel.jsx # Action item tracker with status, deadlines, alerts
+        ├── AnalyticsPanel.jsx   # Speaker analytics — talk share, stats, breakdown
+        ├── SessionsDrawer.jsx   # Slide-in panel listing all persisted sessions
         ├── ChatPanel.jsx        # Conversational Q&A with citations
         ├── TranscriptPanel.jsx  # Transcript viewer (segments + plain text)
         └── LLMTimingBadge.jsx   # Live LLM response time indicator
@@ -225,13 +233,15 @@ On upload it calls `POST /upload`, shows a progress message, then calls `onSucce
 ### `DashboardView.jsx`
 The main application shell. Contains:
 
-- **Sidebar** — filename/segment info, tab navigation, engine selector (NLP vs LLM), collapsible LLM timing, export buttons, new upload button
+- **Sidebar** — filename/segment info, tab navigation, engine selector (NLP vs LLM), collapsible LLM timing, export buttons, history button, new upload button
 - **Top bar** — tab buttons, engine badge, collapsible timing dropdown
-- **Panel area** — switches between ExtractionPanel, ChatPanel, TranscriptPanel based on active tab
+- **Panel area** — switches between ExtractionPanel, ActionItemsPanel, AnalyticsPanel, ChatPanel, and TranscriptPanel based on active tab
 
 **Extractor engine** can be switched between `🧠 NLP` (spaCy, offline, fast) and `🤖 LLM` (Groq/Ollama, AI-powered). The **↻ Re-extract** button forces a fresh extraction with the currently selected engine.
 
 Extraction runs automatically when the dashboard mounts (on first upload). Results are cached by the backend — switching tabs does not re-run extraction.
+
+An **alert count badge** on the Action Items tab shows how many items are overdue or due soon, updating automatically after each extraction.
 
 ---
 
@@ -244,6 +254,45 @@ Displays the structured output from the extraction engine:
 - **Action Items table** — ID, task, owner, deadline, supporting evidence quote
 
 Shows a spinner while extraction is running, and an error state if it fails.
+
+---
+
+### `ActionItemsPanel.jsx`
+A full action item tracker with live status management. Features:
+
+- **Status dropdown** — change any item between Pending, In Progress, Done, and Blocked with an optimistic UI update (no full reload needed)
+- **Deadline-first sorting** — items with a deadline are always shown above items without one, within any active filter
+- **Overdue / Due Soon alert banners** — highlighted banners at the top of the panel for items approaching or past their deadline
+- **Progress bar** — shows overall completion (Done count / total) with a per-status breakdown
+- **Filter tabs** — filter the list by All, Pending, In Progress, Done, or Blocked
+- **Alert window control** — a dropdown lets you set the warning horizon (1, 2, 3, 5, 7, or 14 days)
+- **Alert count badge** — propagated up to the sidebar nav via the `onAlertCount` callback
+
+> **Note:** The status dropdown uses `position: absolute` with `z-index: 50`. Done rows intentionally only fade non-interactive cells (all `td` except the last) so the dropdown stacking context is never clipped by a parent `opacity` rule.
+
+---
+
+### `AnalyticsPanel.jsx`
+Speaker-level analytics derived from the transcript. Displays:
+
+- **Stat cards** — total speaker count, word count, segment count, and questions asked
+- **Highlight row** — most talkative speaker, most assigned speaker, and most decisive speaker
+- **Talk share chart** — horizontal bar chart showing each speaker's share of total words, colour-coded per speaker
+- **Per-speaker breakdown table** — talk share %, question count, action items assigned, and decisions made per speaker
+
+Shows an empty state if the transcript has no speaker labels.
+
+---
+
+### `SessionsDrawer.jsx`
+A slide-in drawer (from the right edge) listing all sessions persisted in the backend's SQLite database. Features:
+
+- **Session list** — sorted by most recently accessed, showing filename, date/time, Q&A turn count, and extraction status
+- **Active session highlight** — the current session is visually distinguished
+- **Two-click delete** — clicking the delete button once shows a `"sure?"` confirmation; a second click within 3 seconds confirms the delete
+- **New transcript shortcut** — a `+ New` button at the top of the drawer navigates directly to the upload screen
+
+Available from both the upload screen and the dashboard top bar.
 
 ---
 
@@ -302,10 +351,15 @@ Centralises all HTTP calls. Reads `VITE_API_URL` from the environment (defaults 
 | `api.chatHistory(id)` | `GET /sessions/{id}/chat/history` | Fetch chat history |
 | `api.clearHistory(id)` | `DELETE /sessions/{id}/chat/history` | Clear chat history |
 | `api.transcript(id, format)` | `GET /sessions/{id}/transcript` | Get transcript (segments or plain) |
-| `api.sessions()` | `GET /sessions` | List all sessions |
+| `api.sessions()` | `GET /sessions` | List all persisted sessions |
+| `api.getSession(id)` | `GET /sessions/{id}` | Fetch full metadata for one session |
 | `api.deleteSession(id)` | `DELETE /sessions/{id}` | Delete a session |
 | `api.exportCsvUrl(id)` | — | Returns the direct CSV download URL |
 | `api.exportPdfUrl(id)` | — | Returns the direct PDF download URL |
+| `api.analytics(id)` | `GET /sessions/{id}/analytics` | Speaker analytics data |
+| `api.actionItems(id)` | `GET /sessions/{id}/action-items` | Action items with current statuses |
+| `api.updateActionItemStatus(id, itemId, status)` | `PATCH /sessions/{id}/action-items/{itemId}/status` | Update a single item's status |
+| `api.deadlineAlerts(id, warningDays)` | `GET /sessions/{id}/action-items/alerts` | Overdue and due-soon alert lists |
 
 All methods throw a `Error` with `message` set to the backend's `detail` field on non-2xx responses.
 
@@ -343,7 +397,30 @@ User clicks ⬇ CSV / ⬇ PDF Report
   ← File download (Content-Disposition: attachment)
 ```
 
-### 5. Timing badge poll
+### 5. Action item status update
+```
+User changes a status in the dropdown
+  → PATCH /sessions/{session_id}/action-items/{item_id}/status
+      body: { "status": "done" }
+  ← { id, status, updated_at }
+  (UI updates optimistically before the response arrives)
+```
+
+### 6. Deadline alerts
+```
+ActionItemsPanel mounts / warning days changes
+  → GET /sessions/{session_id}/action-items/alerts?warning_days=3
+  ← { overdue: [...], due_soon: [...], no_date: [...], alert_count: N }
+```
+
+### 7. Speaker analytics
+```
+AnalyticsPanel mounts
+  → GET /sessions/{session_id}/analytics
+  ← { speaker_count, total_words, speakers: [...], most_talkative, ... }
+```
+
+### 8. Timing badge poll
 ```
 Every 30 seconds (and on mount):
   → GET /api/timing/status?task=chat|extract
@@ -405,6 +482,30 @@ Switch to the **💬 Chatbot** tab. Type a question and press Enter. Good questi
 Each answer includes **citations** — the speaker name, timestamp, and the exact excerpt used. The response time and backend (Groq/Ollama) are shown beneath each AI message.
 
 Chat history is saved in your browser's `localStorage` and restored when you revisit the same session. Use **Clear history** to start fresh.
+
+---
+
+### Tracking action items
+
+Switch to the **✅ Action Items** tab after extraction. Each item shows its task, owner, deadline, and current status.
+
+- **Change status** — click the status pill on any row to open a dropdown and select Pending, In Progress, Done, or Blocked. The change saves immediately.
+- **Deadline sorting** — items with a deadline are automatically sorted to the top of the list. Items without one appear below.
+- **Alert banners** — if any items are overdue or due within your warning window, coloured banners appear at the top of the panel. The number also shows as a badge on the tab in the sidebar.
+- **Adjust the alert window** — use the *Alert within* dropdown (top-right of the filter row) to set your warning horizon from 1 to 14 days.
+- **Filter by status** — use the pill buttons (All / Pending / In Progress / Done / Blocked) to focus on a subset of items.
+
+---
+
+### Speaker analytics
+
+Switch to the **📊 Analytics** tab to see who spoke the most, who was assigned the most tasks, and a full per-speaker breakdown of word counts, questions, action items, and decisions.
+
+---
+
+### Browsing past transcripts
+
+Click **🗂 All Transcripts** in the sidebar (or the top bar) to open the sessions drawer. Sessions are persisted in the backend's SQLite database and survive server restarts. Click any session to load it, or click **✕** (twice to confirm) to delete one permanently.
 
 ---
 

@@ -36,13 +36,15 @@ A fully functional Flutter mobile app for the [Meeting Intelligence Hub](https:/
 | **Transcript Upload** | Pick `.txt` or `.vtt` files via the system file picker |
 | **AI Extraction** | Run LLM or NLP extraction — decisions, action items, summary, stats |
 | **Engine Toggle** | Switch between 🤖 LLM (Groq/Ollama) and 🧠 NLP (spaCy) mid-session |
+| **Action Items Tab** | Full action item tracker with status management (Pending / In Progress / Done / Blocked), live progress bar, deadline alerts, and per-item status updates synced to the backend |
+| **Analytics Tab** | Meeting analytics dashboard — speaker talk-time breakdown, sentiment overview, topic distribution, and engagement metrics |
 | **AI Chatbot** | Ask natural-language questions about the meeting; responses include speaker citations and timestamps |
 | **Transcript Viewer** | Colour-coded speaker segments or plain text view |
 | **CSV Export** | Download a formatted `.csv` of decisions, actions, and summary |
 | **PDF Export** | Download a formatted A4 PDF report |
 | **Chat History** | Conversation history persisted locally via `SharedPreferences` |
 | **Backend Settings** | Configure and health-check the backend URL in-app |
-| **Dark Theme** | Polished dark UI with electric blue accents |
+| **Dark Theme** | Polished dark UI with electric green accents |
 
 ---
 
@@ -91,8 +93,10 @@ meeting_intelligence_hub/
 │   │
 │   ├── screens/
 │   │   ├── upload_screen.dart       # Landing page — file picker + backend config
-│   │   ├── dashboard_screen.dart    # Tab shell — extraction / chat / transcript
+│   │   ├── dashboard_screen.dart    # Tab shell — extract / actions / analytics / chat / transcript
 │   │   ├── extraction_tab.dart      # AI extraction results UI
+│   │   ├── action_items_tab.dart    # Action item tracker with status, progress, deadline alerts
+│   │   ├── analytics_tab.dart       # Meeting analytics — talk time, sentiment, topics
 │   │   ├── chat_tab.dart            # Conversational Q&A UI
 │   │   ├── transcript_tab.dart      # Transcript viewer UI
 │   │   └── settings_screen.dart     # Backend URL, health check, storage
@@ -307,7 +311,7 @@ The main shell after a successful upload. Contains:
 
 - **AppBar** — engine toggle (LLM ↔ NLP), session info button
 - **Session banner** — filename, segment count, speaker count
-- **Tab bar** — Extract / Chat / Transcript
+- **Tab bar** — Extract / Actions / Analytics / Chat / Transcript
 - **Bottom bar** — CSV export, PDF export, New Upload buttons
 
 #### Engine Toggle
@@ -336,6 +340,41 @@ Displays structured AI output from the selected engine:
 - **Re-extract button** — force a fresh run
 
 Pull down to refresh / re-extract.
+
+---
+
+### Action Items Tab
+
+A dedicated task tracker for all action items extracted from the meeting:
+
+- **Overall Progress card** — live progress bar, `X / N done` counter, and per-status counts (Pending / In Progress / Done / Blocked) that update instantly when you change any item's status
+- **Deadline alert banners** — 🚨 Overdue and ⏰ Due Soon banners at the top, with configurable warning window (1 / 2 / 3 / 5 / 7 / 14 days)
+- **Filter chips** — filter the list by status; each chip shows the live count for that status
+- **Action item cards** — ID badge, task description, owner, deadline (colour-coded by urgency), and the original transcript quote
+- **Status picker** — tap the status pill on any card to open a bottom sheet and change the status; the change is sent to the backend and the progress bar updates immediately
+- **Pull-to-refresh** — reload all items and alerts from the backend
+
+**Status colours:**
+
+| Status | Colour |
+|---|---|
+| Pending | Muted grey |
+| In Progress | Accent blue |
+| Done | Green |
+| Blocked | Red |
+
+---
+
+### Analytics Tab
+
+A visual dashboard summarising meeting dynamics:
+
+- **Speaker talk-time** — breakdown of how much each participant spoke, shown as proportional bars with percentages
+- **Sentiment overview** — overall meeting tone and per-speaker sentiment indicators
+- **Topic distribution** — key topics detected in the transcript with relative frequency
+- **Engagement metrics** — turn-taking counts, average turn length, and other participation stats
+
+Pull down to refresh analytics.
 
 ---
 
@@ -385,12 +424,16 @@ All backend communication is in `lib/services/api_service.dart`. A static `baseU
 ### Workflow
 
 ```
-1. POST   /upload                             Upload .txt/.vtt → SessionModel
-2. GET    /sessions/{id}/extract?engine=llm   Run AI extraction → ExtractionModel
-3. POST   /sessions/{id}/chat                 Send question → ChatResponse
-4. GET    /sessions/{id}/transcript           View parsed transcript
-5. GET    /sessions/{id}/export/csv           Download CSV bytes
-6. GET    /sessions/{id}/export/pdf           Download PDF bytes
+1. POST   /upload                                        Upload .txt/.vtt → SessionModel
+2. GET    /sessions/{id}/extract?engine=llm              Run AI extraction → ExtractionModel
+3. GET    /sessions/{id}/action-items                    Fetch action items with totals
+4. PATCH  /sessions/{id}/action-items/{item_id}/status  Update a single item's status
+5. GET    /sessions/{id}/action-items/alerts             Fetch overdue / due-soon alerts
+6. GET    /sessions/{id}/analytics                       Fetch meeting analytics data
+7. POST   /sessions/{id}/chat                            Send question → ChatResponse
+8. GET    /sessions/{id}/transcript                      View parsed transcript
+9. GET    /sessions/{id}/export/csv                      Download CSV bytes
+10. GET   /sessions/{id}/export/pdf                      Download PDF bytes
 ```
 
 ### Error handling
@@ -405,6 +448,9 @@ Timeouts:
 | Upload | 30 seconds |
 | Extraction (LLM) | 3 minutes |
 | Chat | 2 minutes |
+| Action items / Analytics | 15 seconds |
+| Action item status update | 10 seconds |
+| Deadline alerts | 10 seconds |
 | Export | 30 seconds |
 
 ---

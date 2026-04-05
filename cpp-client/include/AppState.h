@@ -53,7 +53,9 @@ struct Session {
     QList<Segment>     segments;
     ExtractionResult   extraction;
     QList<ChatMessage> chatHistory;
-    bool               hasExtraction = false;
+    bool               hasExtraction   = false;
+    bool               hasActionItems  = false;   // set true on first actions fetch
+    bool               hasAnalytics    = false;   // set true on first analytics fetch
     QDateTime          createdAt;
     QList<ChatMessage> chatMessages;
 };
@@ -61,7 +63,7 @@ struct Session {
 struct AppState {
     QList<Session>  sessions;
     int             activeSessionIndex = -1;
-    QString         activeTab = "extraction"; // "extraction" | "chatbot" | "transcript"
+    QString         activeTab = "extraction"; // "extraction" | "actions" | "analytics" | "chatbot" | "transcript"
     QString         extractorEngine = "llm";  // "nlp" | "llm"
     QString         llmBackend;
     double          lastChatSeconds = 0.0;

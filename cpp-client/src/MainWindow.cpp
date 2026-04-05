@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 #include "StyleSheet.h"
+#include "ActionItemsPanel.h"
+#include "AnalyticsPanel.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QJsonObject>
@@ -106,11 +108,15 @@ void MainWindow::setupUi() {
         return btn;
     };
 
-    auto* tabExtract = makeTab("⚡", "Extraction");
-    auto* tabChat    = makeTab("💬", "Chatbot");
-    auto* tabScript  = makeTab("📄", "Transcript");
+    auto* tabExtract  = makeTab("⚡", "Extraction");
+    auto* tabActions  = makeTab("✅", "Actions");
+    auto* tabAnalytics= makeTab("📊", "Analytics");
+    auto* tabChat     = makeTab("💬", "Chatbot");
+    auto* tabScript   = makeTab("📄", "Transcript");
 
     topBarLayout->addWidget(tabExtract);
+    topBarLayout->addWidget(tabActions);
+    topBarLayout->addWidget(tabAnalytics);
     topBarLayout->addWidget(tabChat);
     topBarLayout->addWidget(tabScript);
     topBarLayout->addStretch();
@@ -118,21 +124,27 @@ void MainWindow::setupUi() {
     m_timingWidget = new TimingWidget(m_topBar);
     topBarLayout->addWidget(m_timingWidget);
 
-    connect(tabExtract, &QPushButton::clicked, this, [this]() { switchTab("extraction"); });
-    connect(tabChat,    &QPushButton::clicked, this, [this]() { switchTab("chatbot"); });
-    connect(tabScript,  &QPushButton::clicked, this, [this]() { switchTab("transcript"); });
+    connect(tabExtract,   &QPushButton::clicked, this, [this]() { switchTab("extraction"); });
+    connect(tabActions,   &QPushButton::clicked, this, [this]() { switchTab("actions"); });
+    connect(tabAnalytics, &QPushButton::clicked, this, [this]() { switchTab("analytics"); });
+    connect(tabChat,      &QPushButton::clicked, this, [this]() { switchTab("chatbot"); });
+    connect(tabScript,    &QPushButton::clicked, this, [this]() { switchTab("transcript"); });
 
     mainAreaLayout->addWidget(m_topBar);
 
     // ── Panel stack ───────────────────────────────────────────────────────────
     m_panelStack = new QStackedWidget(m_mainArea);
-    m_extractionPanel = new ExtractionPanel(m_panelStack);
-    m_chatPanel       = new ChatPanel(m_panelStack);
-    m_transcriptPanel = new TranscriptPanel(m_panelStack);
+    m_extractionPanel   = new ExtractionPanel(m_panelStack);
+    m_actionItemsPanel  = new ActionItemsPanel(m_panelStack);
+    m_analyticsPanel    = new AnalyticsPanel(m_panelStack);
+    m_chatPanel         = new ChatPanel(m_panelStack);
+    m_transcriptPanel   = new TranscriptPanel(m_panelStack);
 
-    m_panelStack->addWidget(m_extractionPanel); // 0
-    m_panelStack->addWidget(m_chatPanel);        // 1
-    m_panelStack->addWidget(m_transcriptPanel);  // 2
+    m_panelStack->addWidget(m_extractionPanel);   // 0
+    m_panelStack->addWidget(m_actionItemsPanel);   // 1
+    m_panelStack->addWidget(m_analyticsPanel);     // 2
+    m_panelStack->addWidget(m_chatPanel);          // 3
+    m_panelStack->addWidget(m_transcriptPanel);    // 4
 
     mainAreaLayout->addWidget(m_panelStack, 1);
     wsLayout->addWidget(m_mainArea, 1);
@@ -173,6 +185,58 @@ void MainWindow::setupConnections() {
 
     connect(m_api, &ApiClient::downloadDone,  this, &MainWindow::onDownloadDone);
     connect(m_api, &ApiClient::downloadError, this, &MainWindow::onDownloadError);
+
+    // ── Action Items ──────────────────────────────────────────────────────────
+    connect(m_api, &ApiClient::actionItemsDone, this, [this](const QJsonObject& data) {
+        m_actionItemsPanel->setActionItems(data);
+        // Fetch alerts with the current warning-days setting
+        auto* sess = m_state.activeSession();
+        if (sess) m_api->getDeadlineAlerts(sess->id, m_actionItemsPanel->warningDays());
+    });
+    connect(m_api, &ApiClient::actionItemsError, this, [this](const QString& err) {
+        m_actionItemsPanel->setError(err);
+    });
+    connect(m_api, &ApiClient::actionItemStatusUpdated, this,
+            [this](int itemId, const QString& status) {
+        m_actionItemsPanel->updateItemStatus(itemId, status);
+        // Refresh alerts silently
+        auto* sess = m_state.activeSession();
+        if (sess) m_api->getDeadlineAlerts(sess->id, m_actionItemsPanel->warningDays());
+    });
+    connect(m_api, &ApiClient::deadlineAlertsDone, this, [this](const QJsonObject& data) {
+        m_actionItemsPanel->setAlerts(data);
+    });
+
+    connect(m_actionItemsPanel, &ActionItemsPanel::statusChangeRequested,
+            this, [this](int itemId, const QString& status) {
+        auto* sess = m_state.activeSession();
+        if (sess) m_api->updateActionItemStatus(sess->id, itemId, status);
+    });
+    connect(m_actionItemsPanel, &ActionItemsPanel::refreshRequested, this, [this]() {
+        auto* sess = m_state.activeSession();
+        if (!sess) return;
+        m_actionItemsPanel->setLoading(true);
+        m_api->getActionItems(sess->id);
+    });
+    connect(m_actionItemsPanel, &ActionItemsPanel::warningDaysChanged,
+            this, [this](int days) {
+        auto* sess = m_state.activeSession();
+        if (sess) m_api->getDeadlineAlerts(sess->id, days);
+    });
+
+    // ── Analytics ─────────────────────────────────────────────────────────────
+    connect(m_api, &ApiClient::analyticsDone, this, [this](const QJsonObject& data) {
+        m_analyticsPanel->setAnalytics(data);
+    });
+    connect(m_api, &ApiClient::analyticsError, this, [this](const QString& err) {
+        m_analyticsPanel->setError(err);
+    });
+    connect(m_analyticsPanel, &AnalyticsPanel::refreshRequested, this, [this]() {
+        auto* sess = m_state.activeSession();
+        if (!sess) return;
+        m_analyticsPanel->setLoading(true);
+        m_api->getAnalytics(sess->id);
+    });
 
     // ── Chat history cleared: wipe server + local cache + UI ─────────────────
     connect(m_api, &ApiClient::chatHistoryCleared, this, [this]() {
@@ -278,16 +342,31 @@ void MainWindow::switchTab(const QString& tab) {
 
     if (tab == "extraction") {
         m_panelStack->setCurrentIndex(0);
-        // Auto-extract if no extraction yet
         auto* sess = m_state.activeSession();
         if (sess && !sess->hasExtraction) {
             m_extractionPanel->setExtracting(true);
             m_api->extractFromSession(sess->id, false, m_state.extractorEngine);
         }
-    } else if (tab == "chatbot") {
+    } else if (tab == "actions") {
         m_panelStack->setCurrentIndex(1);
-    } else if (tab == "transcript") {
+        auto* sess = m_state.activeSession();
+        if (sess && !sess->hasActionItems) {
+            m_actionItemsPanel->setLoading(true);
+            m_api->getActionItems(sess->id);
+            sess->hasActionItems = true;
+        }
+    } else if (tab == "analytics") {
         m_panelStack->setCurrentIndex(2);
+        auto* sess = m_state.activeSession();
+        if (sess && !sess->hasAnalytics) {
+            m_analyticsPanel->setLoading(true);
+            m_api->getAnalytics(sess->id);
+            sess->hasAnalytics = true;
+        }
+    } else if (tab == "chatbot") {
+        m_panelStack->setCurrentIndex(3);
+    } else if (tab == "transcript") {
+        m_panelStack->setCurrentIndex(4);
         auto* sess = m_state.activeSession();
         if (sess && sess->segments.isEmpty())
             fetchTranscript(sess->id);
@@ -314,6 +393,8 @@ void MainWindow::loadSession(const QString& sessionId) {
     // ── Restore extraction and transcript panels ───────────────────────────────
     m_extractionPanel->clear();
     m_transcriptPanel->clear();
+    m_actionItemsPanel->clear();
+    m_analyticsPanel->clear();
 
     if (sess->hasExtraction)
         m_extractionPanel->setExtraction(sess->extraction);
@@ -340,6 +421,8 @@ void MainWindow::onUploadDone(const QString& sessionId, const QJsonObject& data)
     sess.id           = sessionId;
     sess.filename     = data["filename"].toString();
     sess.segmentCount = data["segment_count"].toInt();
+    sess.hasActionItems = false;
+    sess.hasAnalytics   = false;
 
     for (const auto& sv : data["speakers"].toArray())
         sess.speakers << sv.toString();
