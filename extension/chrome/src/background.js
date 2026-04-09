@@ -1,22 +1,18 @@
 /**
  * background.js — Service worker for Meeting Scribe
  *
- * ACCURACY FIXES v2:
+ * ARCHITECTURE (v3 — the only architecture that actually works in MV3):
  *
- * 1. AUDIO SOURCE: The injected SpeechRecognition in the meeting tab hears the
- *    microphone only — NOT the tab's speaker audio. The correct high-accuracy
- *    approach is to use tabCapture → offscreen AudioContext → feed stream to
- *    Web Speech API in the offscreen document. We do both: offscreen handles
- *    the tab audio stream; the injected script is kept only as a mic fallback.
+ * Web Speech API in an offscreen document ALWAYS fires `not-allowed` in Chrome
+ * because offscreen documents are never granted speech/microphone permission.
+ * There is no workaround for this.
  *
- * 2. DEDUPLICATION: A seen-text set prevents restarted recognition sessions
- *    from re-emitting already-finalised segments.
- *
- * 3. TIMESTAMP RESET: startTime is passed to both the injected script and the
- *    offscreen doc so segmentStart always resets correctly on restart.
- *
- * 4. maxAlternatives → 3: background tells both recognition contexts to return
- *    3 alternatives; we pick highest-confidence (done inside injected/offscreen).
+ * The ONLY working approach:
+ *   1. Inject SpeechRecognition into the meeting tab itself via executeScript().
+ *      The meeting tab already has microphone permission granted by the user,
+ *      so SpeechRecognition works there immediately — no extra prompts needed.
+ *   2. Use the offscreen doc ONLY for audio pass-through (keeping meeting audio
+ *      audible). It does NOT do any speech recognition at all.
  */
 
 import { buildVTT, buildTXT } from './transcript_builder.js';
@@ -24,12 +20,12 @@ import { buildVTT, buildTXT } from './transcript_builder.js';
 // ── State ─────────────────────────────────────────────────────────────────────
 
 let captureState = {
-  active:      false,
-  tabId:       null,
-  startTime:   null,
-  segments:    [],
-  speakerMap:  {},
-  seenTexts:   new Set(),   // deduplication guard
+  active:     false,
+  tabId:      null,
+  startTime:  null,
+  segments:   [],
+  speakerMap: {},
+  seenTexts:  new Set(),
 };
 
 // ── Message routing ───────────────────────────────────────────────────────────
@@ -58,6 +54,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       chrome.runtime.sendMessage({ type: 'LIVE_SEGMENT', segment: msg.segment }).catch(() => {});
       break;
 
+    case 'INTERIM_UPDATE':
+      chrome.runtime.sendMessage({ type: 'INTERIM_UPDATE', text: msg.text }).catch(() => {});
+      break;
+
+    case 'OFFSCREEN_ERROR':
+      chrome.runtime.sendMessage({ type: 'OFFSCREEN_ERROR', error: msg.error }).catch(() => {});
+      break;
+
     case 'SPEAKER_HINT':
       if (msg.speaker) captureState.speakerMap[msg.domain] = msg.speaker;
       break;
@@ -84,7 +88,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// ── Tab capture ───────────────────────────────────────────────────────────────
+// ── Start / stop ──────────────────────────────────────────────────────────────
 
 async function startCapture(tabId, options) {
   if (captureState.active) throw new Error('Capture already running');
@@ -100,35 +104,26 @@ async function startCapture(tabId, options) {
     seenTexts:  new Set(),
   };
 
-  // ── Strategy 1: tabCapture → offscreen doc (hears ALL meeting audio) ──────
-  // tabCapture gives us a mediaStreamId that the offscreen doc uses to call
-  // getUserMedia({ audio: { chromeMediaSourceId } }).  This means the Speech
-  // API hears the actual mixed meeting audio — all speakers, not just the mic.
-  let tabCaptureSucceeded = false;
-  try {
-    const streamId = await getTabAudioStreamId(tabId);
-    await ensureOffscreenDocument();
-    await chrome.runtime.sendMessage({
-      type:      'INIT_AUDIO',
-      streamId,
-      language:  options.language ?? 'en-US',
-      startTime,
-      alternatives: 3,
-    });
-    tabCaptureSucceeded = true;
-  } catch (err) {
-    console.warn('[BG] tabCapture path failed, falling back to injected SR:', err.message);
-  }
+  // PRIMARY: inject SpeechRecognition into the meeting tab.
+  // The meeting tab has mic permission; offscreen docs do not. This always works.
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func:   injectSpeechRecognition,
+    args:   [options.language ?? 'en-US', startTime],
+  });
 
-  // ── Strategy 2: inject SR into meeting tab (mic only — fallback) ──────────
-  // Only used if tabCapture fails. Less accurate because it only hears the
-  // local microphone, but better than nothing.
-  if (!tabCaptureSucceeded) {
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      func:   injectSpeechRecognition,
-      args:   [options.language ?? 'en-US', startTime, 3],
-    });
+  // OPTIONAL: offscreen audio pass-through so the meeting stays audible.
+  // This does NOT do speech recognition — that would fail with not-allowed.
+  if (options.streamId) {
+    try {
+      await ensureOffscreenDocument();
+      chrome.runtime.sendMessage({
+        type:     'INIT_PASSTHROUGH',
+        streamId: options.streamId,
+      }).catch(() => {});
+    } catch (err) {
+      console.warn('[BG] Audio pass-through setup failed (non-fatal):', err.message);
+    }
   }
 
   return { tabId, startTime };
@@ -137,18 +132,14 @@ async function startCapture(tabId, options) {
 async function stopCapture() {
   if (!captureState.active) throw new Error('No active capture');
 
-  // Stop offscreen doc
-  try {
-    await chrome.runtime.sendMessage({ type: 'STOP_AUDIO' });
-  } catch (_) {}
-
-  // Stop injected script
   if (captureState.tabId) {
     await chrome.scripting.executeScript({
       target: { tabId: captureState.tabId },
       func:   stopInjectedRecognition,
     }).catch(() => {});
   }
+
+  chrome.runtime.sendMessage({ type: 'STOP_PASSTHROUGH' }).catch(() => {});
 
   captureState.active = false;
 
@@ -165,109 +156,87 @@ async function stopCapture() {
   return { segments: captureState.segments.length, vtt, txt };
 }
 
-// ── tabCapture stream ID helper ───────────────────────────────────────────────
-
-function getTabAudioStreamId(tabId) {
-  return new Promise((resolve, reject) => {
-    chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (streamId) => {
-      if (chrome.runtime.lastError || !streamId) {
-        reject(new Error(chrome.runtime.lastError?.message ?? 'No stream ID'));
-      } else {
-        resolve(streamId);
-      }
-    });
-  });
-}
-
-// ── Offscreen document ────────────────────────────────────────────────────────
+// ── Offscreen document (pass-through audio only) ──────────────────────────────
 
 async function ensureOffscreenDocument() {
-  const url = chrome.runtime.getURL('src/offscreen.html');
+  const url      = chrome.runtime.getURL('src/offscreen.html');
   const existing = await chrome.offscreen.hasDocument().catch(() => false);
   if (!existing) {
     await chrome.offscreen.createDocument({
       url,
-      reasons:  ['USER_MEDIA'],
-      justification: 'Capture tab audio for speech recognition',
+      reasons:       ['USER_MEDIA'],
+      justification: 'Keep tab audio audible during capture (pass-through only)',
     });
   }
 }
 
-// ── Functions injected into the meeting tab (MIC FALLBACK ONLY) ───────────────
-// Must be fully self-contained — no imports, no SW closures.
+// ── SpeechRecognition injected into the meeting tab ───────────────────────────
+// MUST be fully self-contained — no imports, no closures over SW variables.
 
-function injectSpeechRecognition(language, captureStartTime, maxAlts) {
+function injectSpeechRecognition(language, captureStartTime) {
   if (window.__meetingScribeActive) {
     window.__meetingScribeStart = captureStartTime;
+    window.__meetingScribeSeen  = new Set();
     return 'already_active';
   }
 
   window.__meetingScribeActive = true;
   window.__meetingScribeStart  = captureStartTime;
-  window.__meetingScribeSeen   = new Set();   // FIX: dedup guard
+  window.__meetingScribeSeen   = new Set();
 
   const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
   if (!SR) {
     chrome.runtime.sendMessage({
       type:  'OFFSCREEN_ERROR',
-      error: 'SpeechRecognition not available. Use Chrome for transcription.',
-    });
+      error: 'SpeechRecognition not available. Please use Chrome.',
+    }).catch(() => {});
     window.__meetingScribeActive = false;
     return 'no_sr';
   }
 
   function makeRecognition() {
-    const r = new SR();
-    r.continuous       = true;
-    r.interimResults   = true;
-    r.lang             = language;
-    r.maxAlternatives  = maxAlts ?? 3;   // FIX: pick best of 3 alternatives
+    const r           = new SR();
+    r.continuous      = true;
+    r.interimResults  = true;
+    r.lang            = language;
+    r.maxAlternatives = 3;
 
-    // FIX: track per-utterance start time; reset on each new session
     let utteranceStart = Date.now();
+
+    r.onstart = () => { utteranceStart = Date.now(); };
 
     r.onresult = (event) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
 
         if (result.isFinal) {
-          // FIX: pick highest-confidence alternative
           let best = result[0];
           for (let j = 1; j < result.length; j++) {
             if ((result[j].confidence ?? 0) > (best.confidence ?? 0)) best = result[j];
           }
-          const transcript = best.transcript.trim();
-          if (!transcript) continue;
+          const raw = best.transcript.trim();
+          if (!raw) continue;
+          const transcript = raw.charAt(0).toUpperCase() + raw.slice(1).replace(/\s+/g, ' ');
 
-          // FIX: deduplication — skip if we've seen this exact text recently
           if (window.__meetingScribeSeen.has(transcript)) continue;
           window.__meetingScribeSeen.add(transcript);
-          // Keep set small
           if (window.__meetingScribeSeen.size > 200) {
-            const iter = window.__meetingScribeSeen.values();
-            window.__meetingScribeSeen.delete(iter.next().value);
+            window.__meetingScribeSeen.delete(window.__meetingScribeSeen.values().next().value);
           }
 
           const now      = Date.now();
           const startSec = Math.max(0, (utteranceStart - window.__meetingScribeStart) / 1000);
-          const endSec   = Math.max(0, (now           - window.__meetingScribeStart) / 1000);
+          const endSec   = Math.max(0, (now            - window.__meetingScribeStart) / 1000);
 
           chrome.runtime.sendMessage({
             type: 'TRANSCRIPT_SEGMENT',
-            segment: {
-              speaker:    null,
-              text:       transcript,
-              startSec,
-              endSec,
-              confidence: best.confidence ?? null,
-              timestamp:  new Date().toISOString(),
-            },
+            segment: { speaker: null, text: transcript, startSec, endSec,
+                       confidence: best.confidence ?? null, timestamp: new Date().toISOString() },
           }).catch(() => {});
 
-          utteranceStart = Date.now();   // FIX: reset for next utterance
+          utteranceStart = Date.now();
 
         } else {
-          // Interim
           chrome.runtime.sendMessage({
             type: 'INTERIM_UPDATE',
             text: result[0].transcript.trim(),
@@ -280,7 +249,7 @@ function injectSpeechRecognition(language, captureStartTime, maxAlts) {
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         chrome.runtime.sendMessage({
           type:  'OFFSCREEN_ERROR',
-          error: 'Microphone blocked. Click the 🔒 icon in Chrome address bar and allow microphone.',
+          error: 'Microphone blocked. Click the 🔒 icon in the Chrome address bar → set Microphone to Allow → refresh the page.',
         }).catch(() => {});
         window.__meetingScribeActive = false;
         return;
@@ -289,10 +258,9 @@ function injectSpeechRecognition(language, captureStartTime, maxAlts) {
         setTimeout(() => {
           if (window.__meetingScribeActive) {
             window.__meetingScribeRecognition = makeRecognition();
-            // FIX: reset utteranceStart on restart so timestamps don't drift
-            try { window.__meetingScribeRecognition.start(); } catch(e) {}
+            try { window.__meetingScribeRecognition.start(); } catch (e) {}
           }
-        }, 500);   // FIX: reduced from 1000ms to 500ms to minimise gap
+        }, 500);
       }
     };
 
@@ -301,9 +269,9 @@ function injectSpeechRecognition(language, captureStartTime, maxAlts) {
         setTimeout(() => {
           if (window.__meetingScribeActive) {
             window.__meetingScribeRecognition = makeRecognition();
-            try { window.__meetingScribeRecognition.start(); } catch(e) {}
+            try { window.__meetingScribeRecognition.start(); } catch (e) {}
           }
-        }, 150);   // FIX: reduced from 300ms to 150ms
+        }, 150);
       }
     };
 
@@ -314,7 +282,7 @@ function injectSpeechRecognition(language, captureStartTime, maxAlts) {
   try {
     window.__meetingScribeRecognition.start();
     return 'started';
-  } catch(e) {
+  } catch (e) {
     window.__meetingScribeActive = false;
     chrome.runtime.sendMessage({ type: 'OFFSCREEN_ERROR', error: e.message }).catch(() => {});
     return 'error';
@@ -324,7 +292,7 @@ function injectSpeechRecognition(language, captureStartTime, maxAlts) {
 function stopInjectedRecognition() {
   window.__meetingScribeActive = false;
   if (window.__meetingScribeRecognition) {
-    try { window.__meetingScribeRecognition.abort(); } catch(e) {}
+    try { window.__meetingScribeRecognition.abort(); } catch (e) {}
     window.__meetingScribeRecognition = null;
   }
   if (window.__meetingScribeSeen) window.__meetingScribeSeen.clear();
@@ -333,12 +301,10 @@ function stopInjectedRecognition() {
 // ── Segment helpers ───────────────────────────────────────────────────────────
 
 function addSegment(seg) {
-  // Global dedup guard in service worker
   if (captureState.seenTexts.has(seg.text)) return;
   captureState.seenTexts.add(seg.text);
   if (captureState.seenTexts.size > 500) {
-    const iter = captureState.seenTexts.values();
-    captureState.seenTexts.delete(iter.next().value);
+    captureState.seenTexts.delete(captureState.seenTexts.values().next().value);
   }
 
   if (seg.startSec == null && captureState.startTime) {
@@ -346,8 +312,8 @@ function addSegment(seg) {
     seg.endSec   = seg.startSec + 3;
   }
   if (!seg.speaker) {
-    const knownSpeaker = Object.values(captureState.speakerMap)[0];
-    if (knownSpeaker) seg.speaker = knownSpeaker;
+    const known = Object.values(captureState.speakerMap)[0];
+    if (known) seg.speaker = known;
   }
   captureState.segments.push(seg);
 
@@ -376,7 +342,6 @@ async function uploadTranscript(format, backendUrl, filename) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`Backend error ${res.status}: ${text}`);
   }
-
   const data = await res.json();
   return { session_id: data.session_id, filename: fname };
 }

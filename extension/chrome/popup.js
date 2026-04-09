@@ -109,10 +109,32 @@ async function startRecording() {
     return;
   }
 
+  // CRITICAL FIX: getMediaStreamId() MUST be called here in the popup
+  // (user-gesture context). The service worker cannot call it in MV3 — Chrome
+  // will reject it with 'not-allowed' because there is no user gesture there.
+  let streamId = null;
+  try {
+    streamId = await new Promise((resolve, reject) => {
+      chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }, (id) => {
+        if (chrome.runtime.lastError || !id) {
+          reject(new Error(chrome.runtime.lastError?.message ?? 'tabCapture failed'));
+        } else {
+          resolve(id);
+        }
+      });
+    });
+  } catch (err) {
+    console.warn('[Popup] tabCapture.getMediaStreamId failed:', err.message);
+    // Continue without streamId — background will fall back to injected SR
+  }
+
   const res = await sendBg({
     type:    'START_CAPTURE',
     tabId:   tab.id,
-    options: { language: settings.language || 'en-US' },
+    options: {
+      language: settings.language || 'en-US',
+      streamId,   // may be null if tabCapture failed — background handles that
+    },
   });
 
   if (!res?.ok) {
