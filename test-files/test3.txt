@@ -1,0 +1,92 @@
+Q2 2026 QUARTERLY BUSINESS REVIEW – MEETING TRANSCRIPT
+Acme Solutions Inc.
+Date: April 8, 2026
+Time: 10:00 AM – 11:45 AM EST
+Location: Conference Room B / Zoom (Hybrid)
+
+Attendees:
+- Sarah Mitchell – VP of Sales
+- David Okonkwo – Head of Product
+- Rachel Huang – CFO
+- James Teller – Marketing Director
+- Priya Nair – Engineering Lead
+- Tom Vasquez – Customer Success Manager
+- Linda Park – HR Business Partner
+- Connor Walsh – Analyst (note-taker)
+
+---
+
+[00:00:12] SARAH MITCHELL: Good morning everyone, thanks for joining. Let's get started. Connor, are you capturing everything?
+
+[00:00:18] CONNOR WALSH: Yes, I'm on it.
+
+[00:00:20] SARAH MITCHELL: Perfect. So, welcome to the Q2 business review. We've got a packed agenda today — financials, product roadmap, pipeline, and a few people topics at the end. Rachel, do you want to kick us off with the numbers?
+
+[00:00:34] RACHEL HUANG: Sure. So Q1 closed at 4.2 million in revenue, which is about 6% below target. The shortfall was mostly driven by two enterprise deals that pushed into Q2 — both have since signed, so we're in a strong position heading into this quarter. Gross margin held steady at 71%, which is healthy. Operating expenses came in slightly over budget due to the early hiring we did in engineering. Priya, I'll let you speak to that.
+
+[00:01:08] PRIYA NAIR: Yeah, we brought on three senior engineers in February rather than March as originally planned. The rationale was to get them ramped up ahead of the platform migration. That's tracking well — we're about 80% through the migration and on schedule for the May 15th cutover.
+
+[00:01:28] DAVID OKONKWO: Can I jump in there? The migration is great, and I want to make sure we're aligned on what's getting released alongside it. We have the new dashboard, the API v3 endpoints, and the notification redesign all bundled in the May release. Priya, are all three still green?
+
+[00:01:46] PRIYA NAIR: Dashboard and API v3 — yes, both green. The notification redesign is amber. We hit some edge cases in testing around multi-timezone support. We might need to scope that down for the initial release and ship the full version in June.
+
+[00:02:04] DAVID OKONKWO: Okay. Let's talk offline after this and figure out what a scoped version looks like. I don't want to delay the whole release for one feature.
+
+[00:02:13] SARAH MITCHELL: Agreed. James, what does marketing have planned around the May launch?
+
+[00:02:19] JAMES TELLER: We've got a full campaign ready. Email sequence goes out May 12th — three touches over two weeks. We're also doing a webinar on May 20th, which we'll promote through LinkedIn and our existing customer base. The angle is around workflow automation, tying directly into the new API capabilities. We've already got 140 registrations, which is ahead of where we were for the last launch.
+
+[00:02:48] SARAH MITCHELL: That's great. Tom, how is customer success preparing?
+
+[00:02:53] TOM VASQUEZ: We've been running early-access sessions with eight of our top accounts. Feedback has been really positive — customers love the dashboard redesign. The main concern we're hearing is around migration support. People want to know there'll be hands-on help during the transition. I'd like to put together a migration concierge package — something we can offer to our enterprise tier.
+
+[00:03:18] SARAH MITCHELL: I think that's a smart idea. Can you put together a one-pager on what that would look like — scope, cost, resourcing — and share it by end of next week?
+
+[00:03:27] TOM VASQUEZ: Absolutely, I'll have it ready by Friday the 17th.
+
+[00:03:31] RACHEL HUANG: On the financial side, if we're going to offer a concierge service, we should think about whether it's bundled or charged separately. I'd lean toward a light charge — even symbolic — to avoid setting a precedent of free professional services.
+
+[00:03:46] TOM VASQUEZ: That's fair. I'll include a pricing model in the one-pager.
+
+[00:03:51] SARAH MITCHELL: Good. Let's move to pipeline. We're sitting at 9.8 million in qualified pipeline for Q2. Target is 5.5 million closed, so coverage ratio is healthy. The big ones to watch are Meridian Financial — that's a 1.2 million deal — and Brockton Health, which is 850K. Both are in final stages.
+
+[00:04:17] JAMES TELLER: Are there any competitive threats on Meridian? Last I heard, they were also evaluating Velotech.
+
+[00:04:24] SARAH MITCHELL: Yes, Velotech is still in the mix. Our champion over there is strong, but the economic buyer is cautious. We're scheduling an executive briefing next week with Rachel joining to add credibility on the financial stability side.
+
+[00:04:39] RACHEL HUANG: Happy to join. Send me the prep materials and I'll be ready.
+
+[00:04:44] SARAH MITCHELL: Will do. Linda, let's shift to people topics. What do you have for us?
+
+[00:04:50] LINDA PARK: A few things. First, Q1 attrition came in at 8% annualized, which is within our target band of under 10%. We did lose two people in sales — both voluntary — and we've already backfilled one of those roles. Second, engagement survey results are in. Overall score is 74 out of 100, up three points from last quarter. The highest scoring areas are team collaboration and clarity of goals. The lowest — and this is consistent — is career development and growth visibility. We're going to be running focus groups in May to dig into that further.
+
+[00:05:32] SARAH MITCHELL: The career development theme keeps coming up. David, I know you've been thinking about a technical career ladder for engineering. Where does that stand?
+
+[00:05:42] DAVID OKONKWO: It's drafted. Priya and I have been working on it. We have four levels defined from IC1 through Staff Engineer, with clear competency criteria. We want to pressure-test it with the team before making it official. We're targeting a soft rollout in May alongside performance reviews.
+
+[00:06:02] LINDA PARK: That's great timing. I'll coordinate with you to make sure it's aligned with the broader comp review we're doing in June.
+
+[00:06:10] SARAH MITCHELL: Perfect. Any other people topics?
+
+[00:06:13] LINDA PARK: Just a reminder — mandatory compliance training is due by April 30th. We're at 62% completion. Managers, please nudge your teams this week.
+
+[00:06:24] SARAH MITCHELL: Noted. I'll send a reminder in Slack after this call. Alright, let's do a quick round of any other business before we close.
+
+[00:06:33] JAMES TELLER: Just a heads-up — we're sponsoring the SaaS Connect conference in June. I'll be sending around a briefing doc on goals and messaging. Would love if a few people from product or sales could join us on the booth.
+
+[00:06:48] DAVID OKONKWO: I can do it. Happy to represent product.
+
+[00:06:51] SARAH MITCHELL: Great. Anyone else? ... Okay. Good meeting everyone. Connor will circulate the notes and action items by end of day. Thanks all.
+
+[00:07:02] [Meeting ended]
+
+---
+
+ACTION ITEMS SUMMARY:
+1. David Okonkwo + Priya Nair – Define scoped notification redesign for May release [By: April 14]
+2. Tom Vasquez – Prepare migration concierge one-pager with pricing model [By: April 17]
+3. Sarah Mitchell – Send Meridian Financial exec briefing prep to Rachel Huang [By: April 14]
+4. Linda Park + David Okonkwo – Align engineering career ladder with June comp review [Ongoing]
+5. All Managers – Remind teams to complete compliance training [By: April 30]
+6. James Teller – Circulate SaaS Connect briefing doc [By: April 22]
+7. Connor Walsh – Distribute meeting notes and action items [By: April 8 EOD]

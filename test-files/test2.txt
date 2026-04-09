@@ -1,0 +1,19 @@
+Krishnaprasad: Good morning everyone, let's get started with today's sprint review.
+Jim: Morning! I've completed the API integration for the payment module. All tests are passing.
+Sarah: Great work Jim. I'm still working on the dashboard UI — should be done by end of day.
+Krishnaprasad: Okay. Sarah, do you need any help unblocking the dashboard? We need it ready before Friday.
+Sarah: I might need a quick review from Jim on the chart component. Can we sync after this call?
+Jim: Sure, I'm free after 11. Let's do it then.
+Krishnaprasad: Perfect. Let's also decide on the deployment window. I'm proposing Thursday night at 10 PM IST.
+Jim: Thursday works for me. I'll prepare the rollback scripts by Wednesday EOD.
+Sarah: Same here. I'll update the staging environment and run a full regression by Thursday afternoon.
+Krishnaprasad: Excellent. So we've decided on Thursday 10 PM IST for deployment. Jim owns the rollback scripts, Sarah handles staging regression.
+Jim: One more thing — the client asked about adding an export to CSV feature. Should we scope that for this sprint?
+Krishnaprasad: No, let's push that to the next sprint. We don't want to risk scope creep this close to the release.
+Sarah: Agreed. I'll add it to the backlog with a priority tag so we pick it up next cycle.
+Krishnaprasad: Good call. Any blockers or risks I should be aware of before we wrap up?
+Jim: None from my side. Everything is on track.
+Sarah: The only risk is if the chart library update breaks existing tests. I'll monitor that closely.
+Krishnaprasad: Noted. Please flag it immediately if that happens. Alright, let's wrap up. Thanks everyone — great progress this week!
+Jim: Thanks, talk soon.
+Sarah: Bye everyone!

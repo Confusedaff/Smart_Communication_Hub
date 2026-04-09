@@ -1,0 +1,177 @@
+Priya (Project Manager):
+Alright, everyone, let’s get started. Thanks for joining on time. We’ve got a full agenda today—Q4 strategy, current blockers, and resource allocation. Let’s begin with a quick update from each team. Arjun, do you want to start with engineering?
+
+Arjun (Engineering Lead):
+Sure. So, overall, we’re on track with the backend migration, but there are still some performance issues with the API layer. We’ve identified a couple of bottlenecks in database queries.
+
+Rahul (Backend Developer):
+Yeah, especially the reporting endpoints—they’re taking longer than expected under load.
+
+Priya:
+How critical is it? Does it affect user experience?
+
+Rahul:
+Not in normal usage, but during peak hours, yes, it can cause delays.
+
+Neha (Product Manager):
+That’s concerning. We’re planning to push the analytics dashboard heavily in Q4, so performance needs to be stable.
+
+Arjun:
+Agreed. We’re working on optimizing queries and adding caching. Should be resolved in about a week.
+
+Priya:
+Okay, let’s mark that as high priority. Meera, can you give us a QA update?
+
+Meera (QA Lead):
+We’ve completed testing for the last sprint. Found around 27 bugs—5 critical, 10 moderate, and the rest minor.
+
+Karan (QA Engineer):
+Most critical ones are related to login sessions timing out unexpectedly.
+
+Neha:
+That’s a big issue. Users are going to hate that.
+
+Arjun:
+We’ve already started fixing that. It’s related to token refresh logic.
+
+Priya:
+Good. Let’s make sure that’s fixed before the next release. No compromises there.
+
+Priya:
+Alright, moving on. Marketing—Ananya?
+
+Ananya (Marketing Lead):
+So, for Q4, we’re shifting focus to digital campaigns—especially LinkedIn and Google Ads. We’re targeting enterprise clients this time.
+
+Vikram (Marketing Analyst):
+We’ve analyzed last quarter’s data, and LinkedIn had the highest conversion rate for B2B.
+
+Neha:
+Makes sense. Are we aligning messaging with the new dashboard features?
+
+Ananya:
+Yes, exactly. The campaign will highlight real-time analytics and performance insights.
+
+Priya:
+Timeline?
+
+Ananya:
+Campaign draft by next Monday, launch by November 1st.
+
+Priya:
+Perfect. Keep us updated.
+
+Priya:
+Now, design—Riya?
+
+Riya (UI/UX Designer):
+We’ve finalized most of the mobile app redesign. Focus was on accessibility—larger buttons, better contrast, and simplified navigation.
+
+Sanjay (Frontend Developer):
+Implementation is about 60% done. Some components need refinement.
+
+Neha:
+Can we see a prototype?
+
+Riya:
+Yes, I’ll share it by tomorrow.
+
+Priya:
+Great. Let’s schedule a review session once it’s ready.
+
+Priya:
+Now let’s talk about blockers. Anyone facing issues?
+
+Rahul:
+We need better test data for performance testing. Current dataset is too small.
+
+Meera:
+Yeah, QA is also struggling with that.
+
+Priya:
+Okay, who can take ownership of generating realistic datasets?
+
+Arjun:
+I’ll assign someone from engineering.
+
+Priya:
+Thanks.
+
+Sanjay:
+Also, we’re waiting on final design specs for a few screens.
+
+Riya:
+I’ll send those today.
+
+Priya:
+Good, let’s avoid delays there.
+
+Priya:
+Next, client updates. Neha?
+
+Neha:
+The client has requested additional features—mainly export options in the dashboard.
+
+Vikram:
+That’s going to increase complexity.
+
+Arjun:
+Yeah, especially if they want multiple formats.
+
+Priya:
+Can we deliver partially?
+
+Neha:
+Yes, we can prioritize CSV export first.
+
+Priya:
+Let’s do that. Focus on high-impact features.
+
+Priya:
+Now, timeline check. Are we still on track for the November release?
+
+Arjun:
+If we resolve current issues, yes.
+
+Meera:
+QA will need at least 3 days after fixes.
+
+Priya:
+Noted. Let’s build that into the schedule.
+
+Priya:
+Before we wrap up, any other points?
+
+Karan:
+Should we plan a team sync meeting next week?
+
+Priya:
+Yes, good idea. Let’s do Monday morning.
+
+Ananya:
+Can we also align marketing with product updates then?
+
+Neha:
+Definitely.
+
+Priya:
+Alright, I’ll schedule it.
+
+Priya:
+Quick recap:
+
+Fix API performance issues (High priority)
+Resolve login/session bugs
+Prepare marketing campaign by next week
+Share UI prototype tomorrow
+Generate better test data
+Prioritize CSV export feature
+Plan team sync on Monday
+
+Priya:
+Anything else?
+
+(silence for a moment)
+
+Priya:
+Alright, thanks everyone. Let’s stay on track and keep communication open. Meeting adjourned.

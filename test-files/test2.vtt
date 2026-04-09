@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:01.000 --> 00:00:04.500
+Krishnaprasad: Good morning everyone, let's get started with today's sprint review.
+
+2
+00:00:05.100 --> 00:00:09.800
+Jim: Morning! I've completed the API integration for the payment module. All tests are passing.
+
+3
+00:00:10.200 --> 00:00:14.600
+Sarah: Great work Jim. I'm still working on the dashboard UI — should be done by end of day.
+
+4
+00:00:15.000 --> 00:00:19.300
+Krishnaprasad: Okay. Sarah, do you need any help unblocking the dashboard? We need it ready before Friday.
+
+5
+00:00:19.900 --> 00:00:24.100
+Sarah: I might need a quick review from Jim on the chart component. Can we sync after this call?
+
+6
+00:00:24.500 --> 00:00:27.800
+Jim: Sure, I'm free after 11. Let's do it then.
+
+7
+00:00:28.200 --> 00:00:33.700
+Krishnaprasad: Perfect. Let's also decide on the deployment window. I'm proposing Thursday night at 10 PM IST.
+
+8
+00:00:34.100 --> 00:00:38.400
+Jim: Thursday works for me. I'll prepare the rollback scripts by Wednesday EOD.
+
+9
+00:00:38.900 --> 00:00:43.500
+Sarah: Same here. I'll update the staging environment and run a full regression by Thursday afternoon.
+
+10
+00:00:44.000 --> 00:00:49.200
+Krishnaprasad: Excellent. So we've decided on Thursday 10 PM IST for deployment. Jim owns the rollback scripts, Sarah handles staging regression.
+
+11
+00:00:49.800 --> 00:00:54.300
+Jim: One more thing — the client asked about adding an export to CSV feature. Should we scope that for this sprint?
+
+12
+00:00:54.700 --> 00:00:59.100
+Krishnaprasad: No, let's push that to the next sprint. We don't want to risk scope creep this close to the release.
+
+13
+00:00:59.500 --> 00:01:03.800
+Sarah: Agreed. I'll add it to the backlog with a priority tag so we pick it up next cycle.
+
+14
+00:01:04.200 --> 00:01:08.600
+Krishnaprasad: Good call. Any blockers or risks I should be aware of before we wrap up?
+
+15
+00:01:09.000 --> 00:01:13.400
+Jim: None from my side. Everything is on track.
+
+16
+00:01:13.900 --> 00:01:18.200
+Sarah: The only risk is if the chart library update breaks existing tests. I'll monitor that closely.
+
+17
+00:01:18.700 --> 00:01:24.000
+Krishnaprasad: Noted. Please flag it immediately if that happens. Alright, let's wrap up. Thanks everyone — great progress this week!
+
+18
+00:01:24.400 --> 00:01:26.800
+Jim: Thanks, talk soon.
+
+19
+00:01:27.100 --> 00:01:29.000
+Sarah: Bye everyone!
