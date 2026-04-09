@@ -1,6 +1,6 @@
 # 🧠 Smart Communication Hub — Meeting Intelligence Hub
 
-> A full-stack AI-powered meeting analysis platform. Upload a transcript, extract decisions and action items, query it with natural language, and view colour-coded speaker timelines — from a C++ desktop app, a Flutter mobile app, or a web browser.
+> A full-stack AI-powered meeting analysis platform. Capture live meetings with a browser extension, upload transcripts, extract decisions and action items, query with natural language, and view colour-coded speaker timelines — from a browser extension, a C++ desktop app, a Flutter mobile app, or a web browser.
 
 ---
 
@@ -14,12 +14,21 @@
 
 <img width="2879" height="1741" alt="Transcript Panel" src="https://github.com/user-attachments/assets/5574709d-a2e3-46c3-923e-8d72b009a3c7" />
 
+> 📸 **Extension screenshots** — insert below:
+
+| Extension State | Screenshot |
+|----------------|-----------|
+| Idle popup on Google Meet | *(insert image)* |
+| Active recording — live transcript | *(insert image)* |
+| Post-recording — download buttons enabled | *(insert image)* |
+
 ---
 
 ## Table of Contents
 
 - [Architecture Overview](#architecture-overview)
 - [Repository Structure](#repository-structure)
+- [🆕 Browser Extension (Meeting Scribe)](#-browser-extension-meeting-scribe)
 - [Backend (Python / FastAPI)](#backend-python--fastapi)
 - [C++ Qt Desktop Client](#c-qt-desktop-client)
 - [Flutter Mobile App](#flutter-mobile-app)
@@ -34,21 +43,32 @@
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Shared Python Backend                   │
-│              FastAPI  ·  Groq / Ollama LLM  ·  spaCy        │
-│                    http://localhost:8000                    │                    
-└───────────┬──────────────────┬──────────────────────────────┘
-            │                  │                  │
-            ▼                  ▼                  ▼
-   ┌─────────────────┐ ┌──────────────┐ ┌──────────────────┐
-   │  C++ Qt Client  │ │  Flutter App │ │    Web Client    │
-   │  (cpp-client/)  │ │(flutter-app/)│ │    (web/)        │
-   │  Desktop app    │ │ Mobile / tab │ │  Browser-based   │
-   └─────────────────┘ └──────────────┘ └──────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                        Shared Python Backend                         │
+│               FastAPI  ·  Groq / Ollama LLM  ·  spaCy                │
+│                       http://localhost:8000                          │
+└──────┬──────────────────┬──────────────────┬──────────────────────── ┘
+       │                  │                  │                  │
+       ▼                  ▼                  ▼                  ▼
+┌────────────┐  ┌──────────────────┐  ┌──────────────┐  ┌──────────────────┐
+│  Browser   │  │  C++ Qt Client   │  │  Flutter App │  │    Web Client    │
+│ Extension  │  │  (cpp-client/)   │  │(flutter-app/)│  │    (web/)        │
+│(extension/)│  │  Desktop app     │  │ Mobile / tab │  │  Browser-based   │
+│            │  │                  │  │              │  │                  │
+│ Captures   │  │  Full analysis   │  │ Mobile UI    │  │ No install       │
+│ live audio │  │  + chat + export │  │ + chat       │  │ required         │
+└────────────┘  └──────────────────┘  └──────────────┘  └──────────────────┘
+      │
+      │  auto-uploads .vtt / .txt
+      ▼
+ /upload endpoint → session_id → all other clients can access the session
 ```
 
-All three frontends talk to the **same REST API**. You can run any one of them (or all three simultaneously) against a single backend instance.
+All four frontends talk to the **same REST API**. The typical workflow is:
+
+1. **Capture** a live meeting with the browser extension → transcript auto-saved + uploaded
+2. **Analyse** using the desktop app, Flutter app, or web client
+3. **Export** as PDF / CSV from any client
 
 ---
 
@@ -56,34 +76,144 @@ All three frontends talk to the **same REST API**. You can run any one of them (
 
 ```
 Smart_Communication_Hub/
-├── backend/                — Python FastAPI server (shared by all clients)
-│   ├── main.py             — App entry point, all route definitions
-│   ├── extractor.py        — NLP + LLM extraction logic
-│   ├── chat.py             — RAG-based Q&A over transcripts
-│   ├── models.py           — Pydantic request/response schemas
+├── extension/                  — Browser extension (Chrome + Firefox builds)
+│   ├── manifest.json           — Chrome MV3 manifest
+│   ├── manifest_firefox.json   — Firefox MV2 manifest
+│   ├── popup.html / popup.js   — Extension popup UI
+│   ├── popup_compat.js         — Cross-browser API shim for popup
+│   ├── icons/                  — Extension icons (16, 48, 128px)
+│   └── src/
+│       ├── background.js       — Service worker: capture + segment collection
+│       ├── background_ff.js    — Firefox persistent background page
+│       ├── content.js          — Injected into meeting pages (speaker scraping)
+│       ├── offscreen.html/js   — Fallback audio processor (Chrome MV3)
+│       ├── transcript_builder.js       — Builds .vtt / .txt (ES module)
+│       └── transcript_builder_global.js— Builds .vtt / .txt (global, Firefox MV2)
+│
+├── backend/                    — Python FastAPI server (shared by all clients)
+│   ├── main.py                 — App entry point, all route definitions
+│   ├── extractor.py            — NLP + LLM extraction logic
+│   ├── chatbot.py              — RAG-based Q&A over transcripts
+│   ├── parser.py               — .txt / .vtt transcript parser
+│   ├── sessions.py             — Session management + SQLite persistence
+│   ├── export.py               — CSV + PDF export
 │   └── requirements.txt
 │
-├── cpp-client/             — C++ Qt6 desktop application
+├── cpp-client/                 — C++ Qt6 desktop application
 │   ├── CMakeLists.txt
-│   ├── include/            — All .h headers
-│   ├── src/                — All .cpp sources
-│   └── resources/          — Icons, fonts, QRC
+│   ├── include/                — All .h headers
+│   ├── src/                    — All .cpp sources
+│   └── resources/              — Icons, fonts, QRC
 │
-├── flutter-app/mihub/      — Flutter mobile/tablet application
+├── flutter-app/mihub/          — Flutter mobile/tablet application
 │   ├── lib/
 │   │   ├── main.dart
 │   │   ├── screens/
 │   │   ├── widgets/
-│   │   └── services/       — API client (Dio)
+│   │   └── services/           — API client (Dio)
 │   └── pubspec.yaml
 │
-├── web/                    — Browser-based web client
+├── web/                        — Browser-based web client
 │   ├── index.html
 │   ├── app.js / main.ts
 │   └── styles/
 │
 └── meeting-hub.code-workspace
 ```
+
+---
+
+## 🆕 Browser Extension (Meeting Scribe)
+
+The browser extension is the **capture layer** of the platform. It runs inside Google Meet, Zoom Web, Teams, Webex, and any other browser-based meeting, transcribes speech in real time, and sends the transcript to the backend automatically.
+
+> 📖 **Full extension documentation:** see [`extension/README.md`](extension/README.md)
+
+### Quick start
+
+**Chrome / Edge / Brave:**
+1. Unzip `meeting-scribe-chrome.zip`
+2. Go to `chrome://extensions` → enable **Developer mode**
+3. Click **Load unpacked** → select the unzipped folder
+4. Click the extension icon → ⚙️ → set **Backend URL** to `http://localhost:8000`
+5. Join a meeting → click **Start Recording**
+
+**Firefox:**
+1. Unzip `meeting-scribe-firefox.zip`
+2. Go to `about:debugging` → **This Firefox** → **Load Temporary Add-on**
+3. Select `manifest.json` inside the unzipped folder
+4. Configure Backend URL as above
+
+### How recording works
+
+```
+Meeting tab (Google Meet / Zoom / Teams...)
+        │
+        │  chrome.scripting.executeScript()
+        ▼
+  Web Speech API — injected directly into the meeting tab
+        │  (inherits the tab's existing microphone permission)
+        │  (continuous recognition, auto-restarts on errors)
+        ▼
+  background.js (service worker)
+        │  Collects finalised speech segments with timestamps
+        │  Scrapes speaker names from meeting DOM via content.js
+        ▼
+        ├── Live feed → popup.js (visible in extension popup)
+        ├── Auto-save → chrome.storage.local (every 10 segments)
+        ├── Auto-download → .vtt file saved to Downloads on Stop
+        └── Upload → POST /upload → session_id returned
+```
+
+### Extension features
+
+| Feature | Description |
+|---------|-------------|
+| 🎙 **Live transcription** | Real-time speech-to-text via Web Speech API, running inside the meeting tab |
+| 👤 **Speaker attribution** | DOM-scraping detects the active speaker on Google Meet, Zoom, Teams, Webex |
+| ⏱ **Timestamped VTT** | Output includes accurate HH:MM:SS.mmm timestamps relative to recording start |
+| 💾 **Auto-save** | `.vtt` file automatically saved to Downloads when recording stops — no manual step |
+| ⬆️ **Direct upload** | One click sends the transcript to the backend; returns a session ID |
+| 📋 **Copy to clipboard** | Instant plain-text copy for pasting into any document |
+| 🔄 **Auto-restart** | Recognition restarts automatically on network errors or browser interruptions |
+| 🌍 **Multi-language** | 11 languages supported including English (India), Hindi, Arabic, Japanese |
+| 🦊 **Firefox support** | Separate MV2 build with persistent background page and native `browser.*` API |
+
+### Output formats
+
+The extension produces two file formats, both accepted directly by `parser.py` in the backend:
+
+**WebVTT (`.vtt`)** — recommended, includes timestamps:
+```
+WEBVTT
+
+1
+00:00:01.000 --> 00:00:04.200
+Krishnaprasad: We need to finalize the Q3 budget by Friday.
+
+2
+00:00:04.800 --> 00:00:07.500
+Jim: Agreed, I'll take ownership of the finance section.
+```
+
+**Plain text (`.txt`)** — speaker-labelled lines:
+```
+Krishnaprasad: We need to finalize the Q3 budget by Friday.
+Jim: Agreed, I'll take ownership of the finance section.
+```
+
+### Supported meeting platforms
+
+| Platform | Auto-detected | Speaker scraping |
+|----------|:------------:|:---------------:|
+| Google Meet | ✅ | ✅ Good |
+| Zoom Web | ✅ | ⚠️ Partial |
+| Microsoft Teams Web | ✅ | ⚠️ Partial |
+| Webex | ✅ | ⚠️ Partial |
+| Whereby | ✅ | ⚠️ Partial |
+| Any browser meeting | ⚠️ Generic | ⚠️ Generic |
+
+> Desktop apps (Zoom desktop, Teams desktop) are not supported — use their web versions.
 
 ---
 
@@ -117,12 +247,6 @@ pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 ```
 
-Or manually:
-
-```bash
-pip install fastapi uvicorn httpx python-multipart reportlab spacy
-```
-
 ### Run
 
 ```bash
@@ -132,17 +256,17 @@ GROQ_API_KEY=gsk_... uvicorn main:app --reload --host 0.0.0.0 --port 8000
 # With Ollama (fully local, no API key needed):
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-# Production (no auto-reload, multiple workers):
+# Production:
 uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
 ```
 
-The server starts at `http://localhost:8000`. Interactive API docs are available at `http://localhost:8000/docs`.
+The server starts at `http://localhost:8000`. Interactive API docs: `http://localhost:8000/docs`.
 
 ---
 
 ## C++ Qt Desktop Client
 
-A native Qt6 desktop app for Windows, macOS, and Linux. Provides the full experience — upload, extraction, chatbot, and transcript viewer — with per-session chat persistence.
+A native Qt6 desktop app for Windows, macOS, and Linux with the full analysis experience — upload, extraction, chatbot, and transcript viewer with per-session chat persistence.
 
 ### Prerequisites
 
@@ -159,23 +283,15 @@ sudo apt install qt6-base-dev qt6-tools-dev cmake build-essential
 # macOS
 brew install qt cmake
 
-# Windows — use the Qt Online Installer:
-# https://www.qt.io/download-qt-installer
-# Select: Qt 6.x → Desktop (MSVC 2022 64-bit or MinGW)
+# Windows — Qt Online Installer → Qt 6.x → Desktop (MSVC 2022 64-bit)
 ```
 
 ### Build & Run
 
 ```bash
 cd cpp-client
-
-# Configure
 cmake -B build -DCMAKE_BUILD_TYPE=Release
-
-# Compile (uses all CPU cores)
 cmake --build build --config Release -j$(nproc)
-
-# Run
 ./build/MeetingIntelligenceHub            # Linux / macOS
 build\Release\MeetingIntelligenceHub.exe  # Windows
 ```
@@ -185,20 +301,15 @@ build\Release\MeetingIntelligenceHub.exe  # Windows
 ```
 cpp-client/
 ├── include/
-│   ├── AppState.h           — Session, ChatMessage, Segment data structs
-│   ├── MainWindow.h         — Root window and session orchestrator
-│   ├── ApiClient.h          — Async HTTP wrapper (QNetworkAccessManager)
-│   ├── ChatPanel.h          — Per-session chat UI with message cache
-│   ├── ExtractionPanel.h    — Decisions + action items tables
-│   ├── TranscriptPanel.h    — Colour-coded speaker segment view
-│   ├── Sidebar.h            — Session list, navigation, engine toggle
-│   ├── UploadWidget.h       — Drag-and-drop upload with animated bg
-│   ├── LoadingSpinner.h     — Circular spinner widget
-│   ├── StatCard.h           — Metric tile (count + label)
-│   ├── TagBadge.h           — Pill badge widget
-│   ├── TimingWidget.h       — Backend indicator + last response time
-│   ├── AnimatedBackground.h — Animated dot-grid canvas
-│   └── StyleSheet.h         — Central QSS dark-theme style constants
+│   ├── AppState.h            — Session, ChatMessage, Segment data structs
+│   ├── MainWindow.h          — Root window and session orchestrator
+│   ├── ApiClient.h           — Async HTTP wrapper (QNetworkAccessManager)
+│   ├── ChatPanel.h           — Per-session chat UI with message cache
+│   ├── ExtractionPanel.h     — Decisions + action items tables
+│   ├── TranscriptPanel.h     — Colour-coded speaker segment view
+│   ├── Sidebar.h             — Session list, navigation, engine toggle
+│   ├── UploadWidget.h        — Drag-and-drop upload with animated bg
+│   └── StyleSheet.h          — Central QSS dark-theme style constants
 └── src/
     ├── main.cpp
     ├── MainWindow.cpp
@@ -210,18 +321,11 @@ cpp-client/
     └── StyleSheet.cpp
 ```
 
-### Key Behaviours
-
-- **Per-session chat persistence** — switching between uploaded transcripts preserves each session's full chat history in memory; chat is restored instantly without re-fetching from the server
-- **Dual extraction engines** — NLP / LLM toggle in the sidebar; re-extract at any time with a single click
-- **Live timing badge** — every AI response shows elapsed seconds and the active backend (Groq / Ollama)
-- **Export** — one-click CSV and PDF download via a native save dialog
-
 ---
 
 ## Flutter Mobile App
 
-Located in `flutter-app/mihub/`. Targets Android, iOS, and tablet form factors with a responsive layout.
+Located in `flutter-app/mihub/`. Targets Android, iOS, and tablet form factors.
 
 ### Prerequisites
 
@@ -235,14 +339,10 @@ Located in `flutter-app/mihub/`. Targets Android, iOS, and tablet form factors w
 
 ```bash
 cd flutter-app/mihub
-
-# Fetch dependencies
 flutter pub get
-
-# Run on connected device or emulator
 flutter run
 
-# Build a release APK (Android)
+# Build release APK
 flutter build apk --release
 
 # Build for iOS
@@ -251,12 +351,12 @@ flutter build ios --release
 
 ### Configure Backend URL
 
-In `lib/services/api_client.dart` (or equivalent), set the base URL to point at your running backend:
+In `lib/services/api_client.dart`:
 
 ```dart
 const String baseUrl = 'http://localhost:8000';
 
-// For a physical device on the same Wi-Fi network:
+// Physical device on same Wi-Fi:
 // const String baseUrl = 'http://192.168.x.x:8000';
 ```
 
@@ -264,42 +364,40 @@ const String baseUrl = 'http://localhost:8000';
 
 ## Web Client
 
-Located in `web/`. A browser-based interface to the same backend — no installation required.
-
-### Run
+Located in `web/`. A browser-based interface — no installation required.
 
 ```bash
 cd web
+open index.html       # plain HTML/JS
 
-# Plain HTML/JS — open directly in a browser:
-open index.html
-
-# If using a Node.js build tool (Vite / Webpack / etc.):
-npm install
-npm run dev
+# If using a build tool:
+npm install && npm run dev
 ```
-
-The web client connects to `http://localhost:8000` by default. Update the base URL constant in the JS/TS source if your backend is hosted on a different machine or port.
 
 ---
 
 ## API Reference
 
-All clients use these endpoints. Full interactive docs are at `http://localhost:8000/docs`.
+All clients use these endpoints. Full interactive docs at `http://localhost:8000/docs`.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/health` | Backend health check |
-| `POST` | `/upload` | Upload a `.txt` / `.vtt` transcript → returns `session_id` |
-| `GET` | `/sessions/{id}/extract` | Run extraction (`?engine=nlp\|llm&force=true`) |
-| `GET` | `/sessions/{id}/transcript` | Fetch parsed segments (`?format=segments`) |
-| `POST` | `/sessions/{id}/chat` | Ask a question, receive answer + cited excerpts |
-| `GET` | `/sessions/{id}/chat/history` | Fetch full chat history for a session |
-| `DELETE` | `/sessions/{id}/chat/history` | Clear chat history for a session |
-| `GET` | `/sessions/{id}/export/csv` | Download extraction results as CSV |
+| `POST` | `/upload` | Upload `.txt` / `.vtt` transcript → returns `session_id` |
+| `GET` | `/sessions` | List all active sessions |
+| `GET` | `/sessions/{id}` | Get session metadata |
+| `DELETE` | `/sessions/{id}` | Delete a session |
+| `GET` | `/sessions/{id}/extract` | Run extraction (`?engine=nlp\|llm`) |
+| `GET` | `/sessions/{id}/transcript` | Fetch parsed segments (`?format=segments\|plain`) |
+| `POST` | `/sessions/{id}/chat` | Ask a question, receive answer + citations |
+| `GET` | `/sessions/{id}/chat/history` | Full chat history |
+| `DELETE` | `/sessions/{id}/chat/history` | Clear chat history |
+| `GET` | `/sessions/{id}/analytics` | Per-speaker talk share + action item counts |
+| `GET` | `/sessions/{id}/action-items` | All action items with status |
+| `PATCH` | `/sessions/{id}/action-items/{item_id}/status` | Update action item status |
+| `GET` | `/sessions/{id}/export/csv` | Download extraction as CSV |
 | `GET` | `/sessions/{id}/export/pdf` | Download full PDF report |
-| `DELETE` | `/sessions/{id}` | Delete a session and its data |
-| `GET` | `/timing/status` | Get active LLM backend and last response timing |
+| `GET` | `/timing/status` | Active LLM backend + last response timing |
 
 ---
 
@@ -310,21 +408,25 @@ All clients use these endpoints. Full interactive docs are at `http://localhost:
 cd backend
 GROQ_API_KEY=gsk_... uvicorn main:app --reload --port 8000
 
-# 2a. C++ desktop client
+# 2a. Use the browser extension to capture a live meeting
+#     → Install meeting-scribe-chrome (see extension/README.md)
+#     → Join a meeting, click Start Recording
+#     → Click Send to Hub when done — note the session_id
+
+# 2b. C++ desktop client — open the session captured above
 cd cpp-client
 cmake -B build && cmake --build build -j$(nproc)
 ./build/MeetingIntelligenceHub
 
-# 2b. Flutter mobile app
+# 2c. Flutter mobile app
 cd flutter-app/mihub
 flutter pub get && flutter run
 
-# 2c. Web client
-cd web
-open index.html    # or: npm run dev
+# 2d. Web client
+cd web && open index.html
 ```
 
-All three frontends can run simultaneously against the same backend. Sessions created in one client are visible from another using the same `session_id`.
+All four frontends can run simultaneously against the same backend. Sessions created by the extension are immediately visible in the desktop app, Flutter app, and web client using the same `session_id`.
 
 ---
 
@@ -332,8 +434,12 @@ All three frontends can run simultaneously against the same backend. Sessions cr
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GROQ_API_KEY` | No | — | Groq API key for cloud LLM inference. If absent, falls back to Ollama |
-| `OLLAMA_HOST` | No | `http://localhost:11434` | Ollama endpoint for local LLM inference |
+| `GROQ_API_KEY` | No | — | Groq API key for cloud LLM. Falls back to Ollama if absent |
+| `OLLAMA_HOST` | No | `http://localhost:11434` | Ollama endpoint for local LLM |
+| `OLLAMA_MODEL` | No | `gemma2:9b` | Ollama model to use |
+| `EXTRACTOR` | No | `llm` | Extraction engine: `llm` or `nlp` |
+| `SESSION_TTL_HOURS` | No | `24` | Hours before idle sessions are auto-evicted |
+| `SESSION_DB_PATH` | No | `sessions.db` | SQLite database file path |
 | `HOST` | No | `0.0.0.0` | Backend bind address |
 | `PORT` | No | `8000` | Backend listen port |
 
@@ -341,14 +447,12 @@ All three frontends can run simultaneously against the same backend. Sessions cr
 
 ## Optional: JetBrains Mono Font (C++ client)
 
-The desktop client uses JetBrains Mono for its terminal aesthetic. To embed it:
-
 1. Download from https://www.jetbrains.com/lp/mono/
 2. Place `JetBrainsMono-Regular.ttf` and `JetBrainsMono-Bold.ttf` in `cpp-client/resources/fonts/`
 3. Uncomment the font entries in `cpp-client/resources/resources.qrc`
 4. Rebuild
 
-Falls back gracefully to Consolas → Courier New → system monospace if the font is not present.
+Falls back gracefully to Consolas → Courier New → system monospace.
 
 ---
 
