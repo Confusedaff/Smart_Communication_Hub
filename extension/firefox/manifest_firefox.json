@@ -1,0 +1,70 @@
+{
+  "manifest_version": 2,
+  "name": "Meeting Scribe — Live Transcript Capture",
+  "version": "1.0.0",
+  "description": "Capture audio from Google Meet, Zoom, Teams and any browser meeting. Transcribe live to .txt/.vtt and send to Meeting Intelligence Hub.",
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "meeting-scribe@extension",
+      "strict_min_version": "109.0"
+    }
+  },
+
+  "permissions": [
+    "tabCapture",
+    "activeTab",
+    "storage",
+    "scripting",
+    "https://meet.google.com/*",
+    "https://*.zoom.us/*",
+    "https://teams.microsoft.com/*",
+    "https://*.webex.com/*",
+    "https://whereby.com/*",
+    "https://*.whereby.com/*",
+    "<all_urls>"
+  ],
+
+  "background": {
+    "scripts": [
+      "src/transcript_builder_global.js",
+      "src/background_ff.js"
+    ],
+    "persistent": true
+  },
+
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*",
+        "https://*.zoom.us/*",
+        "https://teams.microsoft.com/*",
+        "https://*.webex.com/*",
+        "https://whereby.com/*",
+        "https://*.whereby.com/*"
+      ],
+      "js": ["src/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "web_accessible_resources": [
+    "src/offscreen.html",
+    "src/offscreen.js"
+  ],
+
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
