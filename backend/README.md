@@ -24,6 +24,8 @@ A FastAPI backend that turns raw meeting transcripts (`.txt` / `.vtt`) into stru
   - [Export](#export)
   - [Sessions](#sessions)
   - [Transcript Viewer](#transcript-viewer)
+  - [Cross-Session Chat](#cross-session-chat)
+  - [Sentiment & Segment Drill-Down](#sentiment--segment-drill-down)
 - [Extractor Engines](#extractor-engines)
 - [LLM Backends](#llm-backends)
 - [File Structure](#file-structure)
@@ -49,6 +51,7 @@ Upload .txt / .vtt
        │
        ├──▶ chatbot.py   → contextual Q&A over the transcript (LLM, speaker-aware)
        │
+       ├──▶ chatbot_multi.py → cross-session TF-IDF RAG chatbot
        └──▶ export.py    → CSV download or formatted PDF report
 ```
 
@@ -264,6 +267,9 @@ Once running, open:
 6. GET    /sessions/{id}/action-items/alerts            Check for overdue or upcoming deadlines
 7. POST   /sessions/{id}/chat                           Ask questions about the transcript
 8. GET    /sessions/{id}/export/csv                     Download CSV
+9. POST   /chat/multi                                       Ask questions across ALL sessions
+10. GET   /sessions/{id}/transcript/speaker/{name}         Sentiment click-through — get a speaker's segments
+11. GET   /sessions/{id}/transcript/segment/{index}        Jump to a specific segment with context
 9. GET    /sessions/{id}/export/pdf                     Download PDF report
 ```
 
@@ -277,7 +283,7 @@ Returns API status and active extractor engine.
 ```json
 {
   "message": "Meeting Intelligence Hub API is running",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "extractor_engine": "Ollama LLM"
 }
 ```
@@ -704,6 +710,146 @@ Returns the transcript as plain text.
 
 ---
 
+
+### Cross-Session Chat
+
+#### `POST /chat/multi`
+Ask a question that is answered by searching **all sessions** (or a specified subset) using TF-IDF cosine similarity. No vector database required — uses ~40 lines of plain Python math.
+
+**How it works:**
+1. All segments from all sessions are tokenised and IDF weights are computed corpus-wide.
+2. Each segment is scored against the question using cosine similarity.
+3. The top 20 segments are taken, capped at 8 per session so one long transcript can't dominate the context.
+4. Results are grouped by session and formatted as labelled blocks so the LLM knows which meeting each piece came from.
+5. Citations include `session_id` and `filename` for deep-linking in the frontend.
+
+**Request body:**
+```json
+{
+  "question": "Which meetings mentioned the Q3 launch?",
+  "session_ids": ["3f2a1b4c-...", "7a9c2d1e-..."]
+}
+```
+
+`session_ids` is optional — omit it and **every session in the store** is searched.
+
+```bash
+curl -X POST http://localhost:8000/chat/multi \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Who owns the budget review task?"}'
+```
+
+**Response** (same shape as `/sessions/{id}/chat`):
+```json
+{
+  "question": "Who owns the budget review task?",
+  "answer": "Carol was assigned the budget review in the April 3rd meeting.",
+  "citations": [
+    {
+      "speaker": "Alice",
+      "excerpt": "Carol, can you own the budget review?",
+      "timestamp": "00:12:44",
+      "session_id": "3f2a1b4c-...",
+      "filename": "april_3_standup.vtt"
+    }
+  ],
+  "sessions_searched": 4,
+  "timing": { "elapsed_seconds": 4.2, "backend": "groq" }
+}
+```
+
+---
+
+### Sentiment & Segment Drill-Down
+
+Two endpoints that compose to deliver the "click a flagged bar → view original transcript text" flow.
+
+#### `GET /sessions/{session_id}/transcript/speaker/{name}`
+Returns all segments belonging to a speaker, each annotated with a keyword-derived sentiment label and a 0-based `index` into the full transcript array. Matching-sentiment segments are sorted first.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `sentiment` | string | _(none)_ | `positive`, `neutral`, or `negative` — matching segments float to the top |
+
+```bash
+curl "http://localhost:8000/sessions/3f2a1b4c-.../transcript/speaker/Alice?sentiment=negative"
+```
+
+**Response:**
+```json
+{
+  "session_id": "3f2a1b4c-...",
+  "speaker": "Alice",
+  "sentiment_hint": "negative",
+  "segments": [
+    {
+      "index": 14,
+      "speaker": "Alice",
+      "text": "I'm worried this timeline is completely unrealistic.",
+      "timestamp": "00:08:22",
+      "sentiment_label": "negative",
+      "is_flagged": true
+    },
+    {
+      "index": 3,
+      "speaker": "Alice",
+      "text": "Let's align on the Q3 launch date.",
+      "timestamp": "00:01:45",
+      "sentiment_label": "neutral",
+      "is_flagged": false
+    }
+  ]
+}
+```
+
+#### `GET /sessions/{session_id}/transcript/segment/{index}`
+Returns a single segment at `index` plus the two segments surrounding it as context. The clicked segment is flagged with `is_target: true`.
+
+```bash
+curl http://localhost:8000/sessions/3f2a1b4c-.../transcript/segment/14
+```
+
+**Response:**
+```json
+{
+  "session_id": "3f2a1b4c-...",
+  "target_index": 14,
+  "segments": [
+    {
+      "index": 13,
+      "speaker": "Bob",
+      "text": "We could push it by two weeks.",
+      "timestamp": "00:08:10",
+      "is_target": false
+    },
+    {
+      "index": 14,
+      "speaker": "Alice",
+      "text": "I'm worried this timeline is completely unrealistic.",
+      "timestamp": "00:08:22",
+      "is_target": true
+    },
+    {
+      "index": 15,
+      "speaker": "Carol",
+      "text": "Agreed — we need more buffer.",
+      "timestamp": "00:08:35",
+      "is_target": false
+    }
+  ]
+}
+```
+
+**Frontend flow (Feature 4):**
+1. User clicks a red (negative) bar in the Analytics → Sentiment by Speaker chart.
+2. Frontend calls `/transcript/speaker/{name}?sentiment=negative` → gets a list of segments with indices.
+3. User clicks a segment in the list.
+4. Frontend calls `/transcript/segment/{index}` → renders the jump-to context view.
+
+---
+
 ## Extractor Engines
 
 Two engines are available and can be switched at any time via the `engine` query parameter or the `EXTRACTOR` environment variable.
@@ -777,8 +923,9 @@ backend/
 ├── extractor.py          # LLM-based extraction (decisions, actions, summary)
 ├── custom_extractor.py   # spaCy NLP offline extraction engine
 ├── chatbot.py            # Contextual Q&A with citations over the transcript
+├── chatbot_multi.py      # Cross-session TF-IDF RAG chatbot (no vector DB required)
 ├── ollama_client.py      # Async wrapper for Ollama + Groq with auto-fallback
-├── sessions.py           # SQLite-backed session store with analytics + status tracking
+├── sessions.py           # SQLite-backed session store with analytics, status tracking, and sentiment helpers
 ├── export.py             # CSV and PDF export generation
 ├── sessions.db           # Auto-created SQLite database (gitignored)
 ├── requirements.txt      # Python dependencies

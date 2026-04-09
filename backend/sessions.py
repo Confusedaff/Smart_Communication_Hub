@@ -9,6 +9,7 @@ Improvements over the original in-memory dict:
   5. Graceful fallback to in-memory if aiosqlite is unavailable.
 """
 
+import re
 import uuid
 import json
 import hashlib
@@ -417,6 +418,112 @@ def get_speaker_analytics(session_id: str) -> Optional[dict]:
         "most_talkative": speakers_data[0]["speaker"] if speakers_data else None,
         "most_assigned":  max(action_owners, key=action_owners.get) if action_owners else None,
         "most_decisive":  max(decision_makers, key=decision_makers.get) if decision_makers else None,
+    }
+
+
+# ── Sentiment segment lookup (click-through) ─────────────────────────────────
+
+def get_segments_for_speaker(
+    session_id: str,
+    speaker: str,
+    sentiment_hint: str | None = None,
+) -> list[dict]:
+    """
+    Return all transcript segments for a given speaker, enriched with their
+    sequential index so the frontend can scroll the transcript viewer to the
+    correct position.
+
+    Parameters
+    ----------
+    session_id      : Target session.
+    speaker         : Exact speaker name as it appears in segments.
+    sentiment_hint  : Optional — 'positive', 'negative', 'neutral'.
+                      When supplied, segments are annotated with a
+                      rough sentiment label derived from keyword matching
+                      so the frontend can highlight the flagged ones.
+
+    Returns
+    -------
+    List of dicts:
+        { index, speaker, text, timestamp, sentiment }
+    where `index` is the 0-based position in session["segments"] — the
+    transcript viewer can scroll to segment[index] directly.
+    """
+    session = _store.get(session_id)
+    if not session:
+        return []
+
+    _POSITIVE_RE = re.compile(
+        r"\b(great|excellent|perfect|agree|agreed|good|yes|approved|confirmed|"
+        r"congratulations|well done|fantastic|wonderful|happy|pleased|love|enjoy)\b",
+        re.IGNORECASE,
+    )
+    _NEGATIVE_RE = re.compile(
+        r"\b(no|not|never|problem|issue|concern|worried|worried|disagree|"
+        r"blocked|delay|delayed|failed|failure|wrong|difficult|frustrated|"
+        r"unfortunately|risk|risky|doubt|bad|poor|terrible|hate|reject|rejected)\b",
+        re.IGNORECASE,
+    )
+
+    results = []
+    for idx, seg in enumerate(session.get("segments", [])):
+        seg_speaker = seg.get("speaker") or ""
+        if seg_speaker.lower() != speaker.lower():
+            continue
+
+        text = seg.get("text", "").strip()
+        if not text:
+            continue
+
+        # Derive a simple sentiment label from keyword density
+        pos = len(_POSITIVE_RE.findall(text))
+        neg = len(_NEGATIVE_RE.findall(text))
+        if pos > neg:
+            sentiment = "positive"
+        elif neg > pos:
+            sentiment = "negative"
+        else:
+            sentiment = "neutral"
+
+        results.append({
+            "index":     idx,
+            "speaker":   seg_speaker,
+            "text":      text,
+            "timestamp": seg.get("timestamp"),
+            "sentiment": sentiment,
+        })
+
+    # If a sentiment_hint was given, sort matching segments first
+    if sentiment_hint:
+        results.sort(key=lambda s: (0 if s["sentiment"] == sentiment_hint else 1, s["index"]))
+
+    return results
+
+
+def get_segment_at_index(session_id: str, index: int) -> dict | None:
+    """
+    Return the single segment at a given index with its surrounding context
+    (the 2 segments before and after) for the click-through transcript view.
+    """
+    session = _store.get(session_id)
+    if not session:
+        return None
+
+    segs = session.get("segments", [])
+    if index < 0 or index >= len(segs):
+        return None
+
+    context_start = max(0, index - 2)
+    context_end   = min(len(segs), index + 3)
+
+    return {
+        "target_index": index,
+        "target":       {**segs[index], "index": index},
+        "context": [
+            {**segs[i], "index": i, "is_target": i == index}
+            for i in range(context_start, context_end)
+        ],
+        "total_segments": len(segs),
     }
 
 

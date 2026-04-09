@@ -67,7 +67,7 @@ export default function SessionsDrawer({
           ) : (
             <ul className="drawer-list">
               {[...sessions]
-                .sort((a, b) => (b.last_accessed || b.created_at) > (a.last_accessed || a.created_at) ? 1 : -1)
+                .sort((a, b) => b.created_at > a.created_at ? 1 : -1)
                 .map((s) => (
                   <li
                     key={s.id}
@@ -81,7 +81,7 @@ export default function SessionsDrawer({
                       <div className="drawer-item-info">
                         <span className="drawer-item-name">{s.filename}</span>
                         <span className="drawer-item-meta">
-                          {fmt(s.last_accessed || s.created_at)}
+                          {fmt(s.created_at)}
                           {s.chat_turns > 0 && ` · ${s.chat_turns} Q&A`}
                           {s.has_extraction && " · extracted"}
                         </span>

@@ -52,8 +52,36 @@ export const api = {
   clearHistory: (sessionId) =>
     request("DELETE", `/sessions/${sessionId}/chat/history`).then((r) => r.json()),
 
+  // ── Cross-session RAG chat (Feature 3) ──────────────────────────────────
+  // session_ids is optional — omit to search ALL sessions.
+  // Response shape is identical to per-session /chat.
+  multiChat: (question, sessionIds = null) =>
+    request("POST", "/chat/multi", {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question,
+        ...(sessionIds && sessionIds.length > 0 ? { session_ids: sessionIds } : {}),
+      }),
+    }).then((r) => r.json()),
+
   transcript: (sessionId, format = "segments") =>
     request("GET", `/sessions/${sessionId}/transcript?format=${format}`).then((r) => r.json()),
+
+  // ── Sentiment click-through (Feature 4) ────────────────────────────────
+  // Returns segments for a speaker, sorted with matching sentiment first.
+  // sentiment is optional: "positive" | "negative" | "neutral"
+  speakerSegments: (sessionId, speaker, sentiment = null) => {
+    const qs = sentiment ? `?sentiment=${encodeURIComponent(sentiment)}` : "";
+    return request(
+      "GET",
+      `/sessions/${sessionId}/transcript/speaker/${encodeURIComponent(speaker)}${qs}`
+    ).then((r) => r.json());
+  },
+
+  // Returns a single segment + 2 surrounding context segments.
+  // is_target: true marks the clicked segment.
+  segmentAtIndex: (sessionId, index) =>
+    request("GET", `/sessions/${sessionId}/transcript/segment/${index}`).then((r) => r.json()),
 
   // All sessions from backend (persisted across restarts)
   sessions: () => request("GET", "/sessions").then((r) => r.json()),

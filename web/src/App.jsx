@@ -93,6 +93,7 @@ export default function App() {
           onNewUpload={handleNewUpload}
           onOpenHistory={() => setDrawerOpen(true)}
           sessionCount={allSessions.length}
+          allSessions={allSessions}
         />
       )}
     </div>

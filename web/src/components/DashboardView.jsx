@@ -8,14 +8,14 @@ import ActionItemsPanel from "./ActionItemsPanel";
 import LLMTimingBadge from "./LLMTimingBadge";
 
 const TABS = [
-  { id: "extract",    label: "Extraction",  icon: "⚡" },
+  { id: "extract",    label: "Extraction",   icon: "⚡" },
   { id: "actions",    label: "Action Items", icon: "✅" },
-  { id: "analytics",  label: "Analytics",   icon: "📊" },
-  { id: "chat",       label: "Chatbot",     icon: "💬" },
-  { id: "transcript", label: "Transcript",  icon: "📄" },
+  { id: "analytics",  label: "Analytics",    icon: "📊" },
+  { id: "chat",       label: "Chatbot",      icon: "💬" },
+  { id: "transcript", label: "Transcript",   icon: "📄" },
 ];
 
-export default function DashboardView({ session, onNewUpload, onOpenHistory, sessionCount }) {
+export default function DashboardView({ session, onNewUpload, onOpenHistory, sessionCount, allSessions = [] }) {
   const [tab,          setTab]          = useState("extract");
   const [extraction,   setExtraction]   = useState(null);
   const [extracting,   setExtracting]   = useState(false);
@@ -91,6 +91,9 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
               )}
               {t.id === "actions" && alertCount > 0 && (
                 <span className="nav-badge nav-badge--alert">{alertCount}</span>
+              )}
+              {t.id === "chat" && allSessions.length > 1 && (
+                <span className="nav-badge nav-badge--info" title="Cross-session chat available">🌐</span>
               )}
             </button>
           ))}
@@ -194,7 +197,7 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
             <AnalyticsPanel sessionId={sessionId} />
           )}
           {tab === "chat" && (
-            <ChatPanel sessionId={sessionId} />
+            <ChatPanel sessionId={sessionId} allSessions={allSessions} />
           )}
           {tab === "transcript" && (
             <TranscriptPanel sessionId={sessionId} />

@@ -35,6 +35,7 @@ import io
 import sessions
 import parser
 import chatbot
+import chatbot_multi
 import export
 import ollama_client
 
@@ -108,7 +109,7 @@ async def _validate_config() -> None:
 app = FastAPI(
     title="Meeting Intelligence Hub",
     description="Transform raw meeting transcripts into structured intelligence.",
-    version="1.2.0",
+    version="1.3.0",
     lifespan=lifespan,
 )
 
@@ -150,7 +151,7 @@ class ActionItemStatusUpdate(BaseModel):
 async def root():
     return {
         "message":          "Meeting Intelligence Hub API is running",
-        "version":          "1.2.0",
+        "version":          "1.3.0",
         "extractor_engine": _extractor_label,
     }
 
@@ -647,6 +648,174 @@ async def get_transcript(
     if format == "plain":
         return {"session_id": session_id, "text": session["raw_text"]}
     return {"session_id": session_id, "filename": session["filename"], "segments": session["segments"]}
+
+
+
+
+# ── Cross-session chat (Feature 3 — multi-transcript RAG) ────────────────────
+
+class MultiChatRequest(BaseModel):
+    question: str
+    session_ids: list[str] | None = None  # None = all sessions in the store
+
+
+@app.post("/chat/multi", tags=["Chat"], summary="Ask a question across multiple transcripts")
+@(_limiter.limit("20/minute") if _SLOWAPI_OK else lambda f: f)
+async def chat_multi_session(request: Request, body: MultiChatRequest):
+    """
+    Answer a question by searching across multiple (or all) meeting transcripts.
+
+    If `session_ids` is omitted or empty, ALL sessions currently in the store
+    are searched. If `session_ids` is provided, only those sessions are used.
+
+    This fulfils the spec requirement: "The chatbot should answer complex,
+    cross-meeting questions by searching through and reasoning over the content
+    of multiple transcripts at once."
+
+    Returns the same shape as the per-session /chat endpoint, with citations
+    enriched with `session_id` and `filename` so the client can deep-link to
+    the exact meeting and segment.
+
+    Example request:
+        POST /chat/multi
+        { "question": "What has been decided about the Q3 budget across all meetings?" }
+
+    Example response:
+        {
+          "question": "...",
+          "answer": "In the March sprint planning (sprint_march.vtt) Alice decided...",
+          "citations": [
+            { "session_id": "abc...", "filename": "sprint_march.vtt",
+              "speaker": "Alice", "excerpt": "...", "timestamp": "00:04:12" }
+          ],
+          "sessions_searched": 3,
+          "timing": { "elapsed_seconds": 4.1, "backend": "groq" }
+        }
+    """
+    if not body.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    # Resolve the session list
+    if body.session_ids:
+        session_list = []
+        for sid in body.session_ids:
+            sess = sessions.get_session(sid)
+            if sess is None:
+                raise HTTPException(status_code=404, detail=f"Session '{sid}' not found.")
+            session_list.append(sess)
+    else:
+        all_ids = [s["id"] for s in sessions.list_sessions()]
+        if not all_ids:
+            raise HTTPException(status_code=409, detail="No sessions found. Upload at least one transcript first.")
+        session_list = [sessions.get_session(sid) for sid in all_ids]
+        session_list = [s for s in session_list if s is not None]
+
+    # Use a shared chat history key for multi-session conversations
+    # stored in a lightweight in-memory dict keyed by frozenset of session IDs
+    try:
+        result = await chatbot_multi.answer_multi(
+            question=body.question,
+            sessions=session_list,
+            chat_history=[],   # multi-session chat is stateless per call (history
+                               # would need a separate multi-session thread ID)
+        )
+    except Exception as exc:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=503, detail=f"LLM error: {exc}")
+
+    timing           = result.pop("_timing", {})
+    sessions_searched = result.pop("_sessions_searched", len(session_list))
+
+    return {
+        "question":         body.question,
+        "answer":           result.get("answer", ""),
+        "citations":        result.get("citations", []),
+        "sessions_searched": sessions_searched,
+        "timing":           timing,
+    }
+
+
+# ── Sentiment click-through (Feature 4 — click flagged section → transcript) ─
+
+@app.get(
+    "/sessions/{session_id}/transcript/speaker/{speaker}",
+    tags=["Transcript"],
+    summary="Get transcript segments for a speaker (with sentiment labels)",
+)
+async def get_speaker_segments(
+    session_id: str,
+    speaker: str,
+    sentiment: str = Query(
+        None,
+        description="Filter hint: 'positive', 'negative', or 'neutral'. "
+                    "Matching segments are sorted first.",
+    ),
+):
+    """
+    Return all transcript segments spoken by `speaker`, each annotated with:
+      - `index`     — 0-based position in the full transcript (use with the
+                      segment-at-index endpoint to deep-link from a chart click)
+      - `sentiment` — 'positive' | 'negative' | 'neutral' (keyword-based)
+      - `timestamp` — original VTT timestamp if available
+
+    This is the backend half of "click on a flagged sentiment section and view
+    the original transcript text" (spec Feature 4).
+
+    Typical frontend flow:
+      1. AnalyticsPanel renders per-speaker sentiment bars.
+      2. User clicks a bar (or a coloured segment in a future timeline chart).
+      3. Frontend calls GET /sessions/{id}/transcript/speaker/{name}?sentiment=negative
+      4. Response contains all that speaker's segments, negative ones first,
+         each with an `index` the TranscriptPanel can scroll to.
+    """
+    _require_session(session_id)
+    segs = sessions.get_segments_for_speaker(session_id, speaker, sentiment_hint=sentiment)
+    if not segs:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No segments found for speaker '{speaker}' in session '{session_id}'.",
+        )
+    return {
+        "session_id":      session_id,
+        "speaker":         speaker,
+        "sentiment_filter": sentiment,
+        "segment_count":   len(segs),
+        "segments":        segs,
+    }
+
+
+@app.get(
+    "/sessions/{session_id}/transcript/segment/{index}",
+    tags=["Transcript"],
+    summary="Get a specific transcript segment with surrounding context",
+)
+async def get_segment_context(session_id: str, index: int):
+    """
+    Return a single transcript segment at `index` together with the 2
+    segments before and after it — giving the frontend enough context to
+    render a focused "jump-to" view without loading the entire transcript.
+
+    The `target_index` field in the response matches the `index` field
+    returned by the speaker-segments endpoint, so the two endpoints compose:
+
+        GET /transcript/speaker/Alice?sentiment=negative
+        → picks a segment with index=14
+        GET /transcript/segment/14
+        → renders that segment in context
+
+    `is_target: true` marks which segment in the `context` array is the
+    one the user clicked on.
+    """
+    _require_session(session_id)
+    result = sessions.get_segment_at_index(session_id, index)
+    if result is None:
+        sess = sessions.get_session(session_id)
+        total = len(sess["segments"]) if sess else 0
+        raise HTTPException(
+            status_code=404,
+            detail=f"Segment index {index} out of range (session has {total} segments).",
+        )
+    return {"session_id": session_id, **result}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

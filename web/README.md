@@ -4,6 +4,24 @@ A React + Vite single-page application that provides a polished UI for the Meeti
 
 ---
 
+## Changelog
+
+### [1.0.1] — 2026-04-09
+
+**Bug fix — Sessions drawer showed wrong timestamps**
+
+The transcript history drawer was displaying the time a session was *last opened* instead of the time it was *uploaded*. Sessions also re-sorted themselves every time you clicked into one, making the list order unpredictable.
+
+**Root cause:** `SessionsDrawer.jsx` was reading `last_accessed` (a field the backend updates on every session fetch) for both the displayed date and the sort key. The backend was storing `created_at` correctly all along; the frontend was simply using the wrong field.
+
+**Fix in `src/components/SessionsDrawer.jsx`:**
+- Sort key changed from `last_accessed || created_at` → `created_at` (newest upload at the top, stable order)
+- Displayed timestamp changed from `last_accessed || created_at` → `created_at` (always shows upload time)
+
+No backend changes required.
+
+---
+
 ## Screenshots
 
 **Upload screen** — drag-and-drop landing page with animated grid background
@@ -25,6 +43,7 @@ A React + Vite single-page application that provides a polished UI for the Meeti
 
 ## Table of Contents
 
+- [Changelog](#changelog)
 - [How It Works](#how-it-works)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
@@ -287,10 +306,12 @@ Shows an empty state if the transcript has no speaker labels.
 ### `SessionsDrawer.jsx`
 A slide-in drawer (from the right edge) listing all sessions persisted in the backend's SQLite database. Features:
 
-- **Session list** — sorted by most recently accessed, showing filename, date/time, Q&A turn count, and extraction status
+- **Session list** — sorted by **upload time** (`created_at`), newest first, showing filename, upload date/time, Q&A turn count, and extraction status
 - **Active session highlight** — the current session is visually distinguished
 - **Two-click delete** — clicking the delete button once shows a `"sure?"` confirmation; a second click within 3 seconds confirms the delete
 - **New transcript shortcut** — a `+ New` button at the top of the drawer navigates directly to the upload screen
+
+> **Note:** The displayed timestamp and sort order are both derived from `created_at` (the moment the file was uploaded). The backend also tracks `last_accessed`, but that field is intentionally not used here — doing so would cause the list to re-sort and show incorrect timestamps whenever a session was opened.
 
 Available from both the upload screen and the dashboard top bar.
 
@@ -505,7 +526,7 @@ Switch to the **📊 Analytics** tab to see who spoke the most, who was assigned
 
 ### Browsing past transcripts
 
-Click **🗂 All Transcripts** in the sidebar (or the top bar) to open the sessions drawer. Sessions are persisted in the backend's SQLite database and survive server restarts. Click any session to load it, or click **✕** (twice to confirm) to delete one permanently.
+Click **🗂 All Transcripts** in the sidebar (or the top bar) to open the sessions drawer. Sessions are persisted in the backend's SQLite database and survive server restarts. The list is sorted by upload time — the most recently uploaded transcript appears at the top. Click any session to load it, or click **✕** (twice to confirm) to delete one permanently.
 
 ---
 
