@@ -6,9 +6,6 @@
 
 ## Screenshots
 
-> 📸 **Insert your screenshots here.**
-> Recommended shots: idle popup, active recording, live transcript feed, settings panel, downloaded file in Explorer.
-
 | State | Screenshot |
 |-------|-----------|
 | Idle — ready to record | <img width="2879" height="1617" alt="Image" src="https://github.com/user-attachments/assets/eba7b2c9-a48f-403e-a72f-8e4a9bbc8e5a" />|
@@ -64,7 +61,7 @@ background.js (service worker)
 
 ## Installation — Chrome / Edge / Brave
 
-> *(Insert screenshot of chrome://extensions with Developer mode toggled on)*
+> <img width="2879" height="1461" alt="Image" src="https://github.com/user-attachments/assets/68fb578e-eada-4f85-8b56-b7fd5f302153" />
 
 1. **Download** the `meeting-scribe-chrome.zip` from the releases page and unzip it.
 
@@ -75,17 +72,17 @@ background.js (service worker)
 
 3. **Enable Developer Mode** using the toggle in the top-right corner.
 
-   > *(Insert screenshot of Developer mode toggle)*
+   > <img width="570" height="303" alt="Image" src="https://github.com/user-attachments/assets/c5ab52f5-935d-4143-814c-44caaee2242d" />
 
 4. Click **Load unpacked**.
 
-   > *(Insert screenshot of Load unpacked button)*
+   > <img width="912" height="226" alt="Image" src="https://github.com/user-attachments/assets/206a2e17-bf7d-4075-8d21-3959590905e2" />
 
 5. Select the **`meeting-scribe-chrome`** folder (the one containing `manifest.json`).
 
 6. The extension appears in your extensions list. Click the **puzzle piece** icon in the toolbar and **pin** Meeting Scribe for easy access.
 
-   > *(Insert screenshot of pinning the extension)*
+   > <img width="752" height="520" alt="Image" src="https://github.com/user-attachments/assets/5103eee1-c270-4a7b-9a39-5ead2980e030" />
 
 ---
 
@@ -99,13 +96,9 @@ background.js (service worker)
 
 3. Click **This Firefox** in the left sidebar.
 
-   > *(Insert screenshot of about:debugging → This Firefox)*
-
 4. Click **Load Temporary Add-on…**
 
 5. Navigate into the `meeting-scribe-firefox` folder and select `manifest.json`.
-
-   > *(Insert screenshot of file picker with manifest.json selected)*
 
 6. The extension loads and appears in your toolbar.
 
@@ -120,8 +113,6 @@ Before your first meeting, configure the extension with your backend URL.
 1. Click the **Meeting Scribe icon** in your toolbar.
 
 2. Click the **⚙️ gear icon** in the top-right of the popup.
-
-   > *(Insert screenshot of settings panel open)*
 
 3. Fill in the settings:
 
@@ -142,8 +133,6 @@ Before your first meeting, configure the extension with your backend URL.
 
 Open Google Meet, Zoom Web, Teams, or any browser-based meeting as you normally would. Make sure your microphone is working — you should be able to speak and be heard.
 
-> *(Insert screenshot of a Google Meet tab open in Chrome)*
-
 ---
 
 ### Step 2 — Open the extension popup
@@ -154,8 +143,6 @@ Click the **Meeting Scribe icon** in your Chrome toolbar. The popup opens. You s
 - Status showing **"Ready to capture"**
 - A green **Start Recording** button
 
-> *(Insert screenshot of popup open over a meeting tab, showing the detection badge)*
-
 ---
 
 ### Step 3 — Start Recording
@@ -164,8 +151,6 @@ Click **Start Recording**.
 
 The button turns **red** and shows "Stop Recording". The status dot turns green and pulses. The timer starts counting up.
 
-> *(Insert screenshot of popup in active recording state — red button, green pulsing dot, timer running)*
-
 > 💡 **Tip:** Keep the popup open during short meetings to see the live transcript. You can close it safely during long meetings — recording continues in the background and the transcript is auto-saved every 10 segments.
 
 ---
@@ -173,8 +158,6 @@ The button turns **red** and shows "Stop Recording". The status dot turns green 
 ### Step 4 — Watch the live transcript
 
 As people speak, text appears in the **Live Transcript** panel in real time. Interim results show in grey italics while a sentence is being spoken. Finalised sentences appear in white.
-
-> *(Insert screenshot of the live transcript feed with several lines of captured speech)*
 
 The three stat cards update live:
 
@@ -196,8 +179,6 @@ The extension will:
 3. **Automatically save a `.vtt` file** to your Downloads folder
 4. Enable the Download and Send to Hub buttons
 
-> *(Insert screenshot of popup after stopping — download buttons enabled, toast showing "auto-saving")*
-
 The auto-saved file will be named like:
 ```
 meeting_2026-04-09T11-09-23.vtt
@@ -214,8 +195,6 @@ Click **Download .vtt** or **Download .txt** to save the transcript to your comp
 
 **Option B — Send to Meeting Intelligence Hub**
 Click **Send to Hub**. The transcript uploads to your backend and you receive a `session_id`. You can then open the Hub's web interface or desktop app and use that session for AI extraction and chat.
-
-> *(Insert screenshot of the "Uploaded! Session: abc12345…" toast notification)*
 
 **Option C — Copy to clipboard**
 Click **Copy Text** to copy the plain-text transcript to your clipboard for pasting into any document.
@@ -279,8 +258,6 @@ POST http://localhost:8000/sessions/a3f9b2c1-.../chat
 # Download a PDF summary
 GET http://localhost:8000/sessions/a3f9b2c1-.../export/pdf
 ```
-
-> *(Insert screenshot of the Hub's extraction panel showing results from an extension-captured transcript)*
 
 ---
 
@@ -359,8 +336,6 @@ If no speaker can be scraped from the DOM, the name you entered in Settings is u
 
 **Check 1 — Microphone permission**
 Look at the Chrome address bar while on the meeting tab. If there's a 🔒 or a microphone icon with an X, click it and allow microphone access for the site.
-
-> *(Insert screenshot of Chrome's microphone permission prompt)*
 
 **Check 2 — You're on the right tab**
 The extension captures the **currently active tab**. Make sure you clicked Start while the meeting tab was active, not from another tab.
