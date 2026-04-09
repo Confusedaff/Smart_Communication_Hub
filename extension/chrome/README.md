@@ -61,7 +61,7 @@ background.js (service worker)
 
 ## Installation — Chrome / Edge / Brave
 
-> <img width="2879" height="1461" alt="Image" src="https://github.com/user-attachments/assets/68fb578e-eada-4f85-8b56-b7fd5f302153" />
+<img width="2879" height="1461" alt="Image" src="https://github.com/user-attachments/assets/68fb578e-eada-4f85-8b56-b7fd5f302153" />
 
 1. **Download** the `meeting-scribe-chrome.zip` from the releases page and unzip it.
 
@@ -72,17 +72,17 @@ background.js (service worker)
 
 3. **Enable Developer Mode** using the toggle in the top-right corner.
 
-   > <img width="570" height="303" alt="Image" src="https://github.com/user-attachments/assets/c5ab52f5-935d-4143-814c-44caaee2242d" />
+<img width="570" height="303" alt="Image" src="https://github.com/user-attachments/assets/c5ab52f5-935d-4143-814c-44caaee2242d" />
 
 4. Click **Load unpacked**.
 
-   > <img width="912" height="226" alt="Image" src="https://github.com/user-attachments/assets/206a2e17-bf7d-4075-8d21-3959590905e2" />
+<img width="912" height="226" alt="Image" src="https://github.com/user-attachments/assets/206a2e17-bf7d-4075-8d21-3959590905e2" />
 
 5. Select the **`meeting-scribe-chrome`** folder (the one containing `manifest.json`).
 
 6. The extension appears in your extensions list. Click the **puzzle piece** icon in the toolbar and **pin** Meeting Scribe for easy access.
 
-   > <img width="752" height="520" alt="Image" src="https://github.com/user-attachments/assets/5103eee1-c270-4a7b-9a39-5ead2980e030" />
+<img width="752" height="520" alt="Image" src="https://github.com/user-attachments/assets/5103eee1-c270-4a7b-9a39-5ead2980e030" />
 
 ---
 
