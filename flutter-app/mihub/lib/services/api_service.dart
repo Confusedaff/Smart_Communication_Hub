@@ -240,6 +240,83 @@ class ApiService {
         .timeout(const Duration(seconds: 10));
   }
 
+  // ── Batch Upload ──────────────────────────────────────────────────────────
+
+  /// Upload multiple transcript files at once via POST /upload/batch.
+  /// Returns a list of result maps — each has either 'session_id' (success)
+  /// or 'error' (failure) plus the original 'filename'.
+  static Future<List<Map<String, dynamic>>> uploadBatch(List<File> files) async {
+    final request =
+        http.MultipartRequest('POST', Uri.parse('$_baseUrl/upload/batch'));
+    for (final file in files) {
+      request.files.add(await http.MultipartFile.fromPath('files', file.path));
+    }
+    final streamed =
+        await request.send().timeout(const Duration(seconds: 60));
+    final response = await http.Response.fromStream(streamed);
+    if (response.statusCode == 201) {
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      return List<Map<String, dynamic>>.from(data['results'] ?? []);
+    }
+    final error = _parseError(response.body);
+    throw ApiException('Batch upload failed: $error');
+  }
+
+  // ── Cross-session chat ────────────────────────────────────────────────────
+
+  /// Cross-session chat — searches across multiple (or all) transcripts.
+  /// [sessionIds] is optional; pass null to search all sessions.
+  static Future<Map<String, dynamic>> sendMultiChat(
+      String question, {List<String>? sessionIds}) async {
+    final body = <String, dynamic>{'question': question};
+    if (sessionIds != null && sessionIds.isNotEmpty) {
+      body['session_ids'] = sessionIds;
+    }
+    final response = await http
+        .post(
+          Uri.parse('$_baseUrl/chat/multi'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode(body),
+        )
+        .timeout(const Duration(minutes: 2));
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    }
+    final error = _parseError(response.body);
+    throw ApiException('Multi-chat failed: $error');
+  }
+
+  // ── Sentiment click-through ───────────────────────────────────────────────
+
+  /// Get segments for a speaker, optionally filtered/sorted by sentiment.
+  /// [sentiment] can be 'positive', 'negative', 'neutral', or null.
+  static Future<Map<String, dynamic>> getSpeakerSegments(
+      String sessionId, String speaker,
+      {String? sentiment}) async {
+    final qs = sentiment != null ? '?sentiment=$sentiment' : '';
+    final url = '$_baseUrl/sessions/$sessionId/transcript/speaker/'
+        '${Uri.encodeComponent(speaker)}$qs';
+    final response =
+        await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    }
+    throw ApiException('Failed to get speaker segments: ${response.statusCode}');
+  }
+
+  /// Get a single segment at [index] with 2 surrounding context segments.
+  static Future<Map<String, dynamic>> getSegmentContext(
+      String sessionId, int index) async {
+    final response = await http
+        .get(Uri.parse(
+            '$_baseUrl/sessions/$sessionId/transcript/segment/$index'))
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    }
+    throw ApiException('Failed to get segment: ${response.statusCode}');
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   static String _parseError(String body) {

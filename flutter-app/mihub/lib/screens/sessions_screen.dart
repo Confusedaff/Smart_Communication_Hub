@@ -35,6 +35,7 @@ class SessionsScreen extends StatefulWidget {
   final Function(SessionModel) onUploadSuccess;
   final Function(List<SessionModel>) onSessionsRestored;
   final VoidCallback onOpenSettings;
+  final VoidCallback? onOpenMultiChat;
 
   const SessionsScreen({
     super.key,
@@ -44,6 +45,7 @@ class SessionsScreen extends StatefulWidget {
     required this.onUploadSuccess,
     required this.onSessionsRestored,
     required this.onOpenSettings,
+    this.onOpenMultiChat,
   });
 
   @override
@@ -268,6 +270,101 @@ class _SessionsScreenState extends State<SessionsScreen> {
     }
   }
 
+  Future<void> _pickAndUploadBatch() async {
+    setState(() {
+      _errorMessage = null;
+      _uploadStatus = null;
+    });
+
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['txt', 'vtt'],
+      allowMultiple: true,
+    );
+
+    if (result == null || result.files.isEmpty) return;
+
+    final paths = result.files
+        .map((f) => f.path)
+        .whereType<String>()
+        .where((p) {
+          final ext = p.split('.').last.toLowerCase();
+          return ext == 'txt' || ext == 'vtt';
+        })
+        .toList();
+
+    if (paths.isEmpty) {
+      setState(() => _errorMessage = 'No valid .txt or .vtt files selected.');
+      return;
+    }
+
+    setState(() {
+      _isUploading = true;
+      _uploadStatus =
+          'Uploading ${paths.length} file${paths.length > 1 ? 's' : ''}…';
+    });
+
+    try {
+      final files = paths.map((p) => File(p)).toList();
+      final results = await ApiService.uploadBatch(files);
+
+      int successCount = 0;
+      final errors = <String>[];
+
+      for (final r in results) {
+        if (r.containsKey('session_id') && r['session_id'] != null) {
+          successCount++;
+          try {
+            final detail =
+                await ApiService.getSessionDetail(r['session_id'] as String);
+            if (mounted) widget.onUploadSuccess(SessionModel.fromJson(detail));
+          } catch (_) {
+            if (mounted) {
+              widget.onUploadSuccess(SessionModel(
+                sessionId: r['session_id'] as String,
+                filename: r['filename']?.toString() ?? 'Unknown',
+                segmentCount: (r['segment_count'] as num?)?.toInt() ?? 0,
+                speakers: List<String>.from(r['speakers'] ?? []),
+                charCount: 0,
+              ));
+            }
+          }
+        } else if (r.containsKey('error')) {
+          errors.add('${r['filename']}: ${r['error']}');
+        }
+      }
+
+      if (mounted) {
+        Navigator.pop(context);
+        setState(() {
+          _isUploading = false;
+          _uploadStatus = null;
+          if (errors.isNotEmpty) {
+            _errorMessage =
+                '$successCount uploaded.\nFailed:\n${errors.join('\n')}';
+          }
+        });
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.message;
+          _isUploading = false;
+          _uploadStatus = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Batch upload failed. Is the backend running?';
+          _isUploading = false;
+          _uploadStatus = null;
+        });
+      }
+    }
+  }
+
+
   // ── Sheets ────────────────────────────────────────────────────────────────
 
   void _openUploadSheet() {
@@ -345,6 +442,29 @@ class _SessionsScreenState extends State<SessionsScreen> {
                   : _buildSessionList(t),
             ),
 
+            // Multi-chat FAB — bottom left (only when 2+ sessions)
+            if (widget.onOpenMultiChat != null)
+              SafeArea(
+                child: Align(
+                  alignment: Alignment.bottomLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 24, left: 16),
+                    child: FloatingActionButton.extended(
+                      heroTag: 'multi_chat_fab',
+                      onPressed: widget.onOpenMultiChat,
+                      backgroundColor: const Color(0xFFA78BFA).withOpacity(0.15),
+                      foregroundColor: const Color(0xFFA78BFA),
+                      elevation: 2,
+                      icon: const Icon(Icons.hub_outlined, size: 20),
+                      label: const Text(
+                        'Multi-Chat',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
             // Floating settings icon — top right
             SafeArea(
               child: Align(
@@ -385,12 +505,14 @@ class _SessionsScreenState extends State<SessionsScreen> {
           ],
         ),
         floatingActionButton: _buildFab(t),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       ),
     );
   }
 
   Widget _buildFab(AppThemeTokens t) {
     return FloatingActionButton.extended(
+      heroTag: 'upload_fab',
       onPressed: _backendOnline ? _openUploadSheet : null,
       backgroundColor: _backendOnline ? t.accent : t.bgElevated,
       foregroundColor: _backendOnline ? Colors.black : t.textMuted,
@@ -536,6 +658,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                     ],
                   ),
                 ),
+
               ],
             ),
           ),
@@ -843,6 +966,17 @@ class _UploadSheet extends StatelessWidget {
                           : null,
                       icon: const Icon(Icons.add_circle_outline, size: 18),
                       label: const Text('Upload Transcript'),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: parent._backendOnline
+                          ? parent._pickAndUploadBatch
+                          : null,
+                      icon: const Icon(Icons.folder_open_outlined, size: 18),
+                      label: const Text('Batch Upload (multiple files)'),
                     ),
                   ),
                   if (!parent._backendOnline && !parent._isCheckingHealth)

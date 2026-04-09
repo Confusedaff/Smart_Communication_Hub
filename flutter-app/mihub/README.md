@@ -34,17 +34,20 @@ A fully functional Flutter mobile app for the [Meeting Intelligence Hub](https:/
 | Feature | Description |
 |---|---|
 | **Transcript Upload** | Pick `.txt` or `.vtt` files via the system file picker |
+| **Batch Upload** | Select and upload multiple transcript files at once — results and errors reported per file |
 | **AI Extraction** | Run LLM or NLP extraction — decisions, action items, summary, stats |
 | **Engine Toggle** | Switch between 🤖 LLM (Groq/Ollama) and 🧠 NLP (spaCy) mid-session |
 | **Action Items Tab** | Full action item tracker with status management (Pending / In Progress / Done / Blocked), live progress bar, deadline alerts, and per-item status updates synced to the backend |
-| **Analytics Tab** | Meeting analytics dashboard — speaker talk-time breakdown, sentiment overview, topic distribution, and engagement metrics |
+| **Analytics Tab** | Meeting analytics dashboard — speaker talk-time breakdown with clickable rows that drill into per-speaker sentiment analysis |
+| **Sentiment Drill-Down** | Tap any speaker bar in Analytics to view all their segments colour-coded by sentiment (positive / negative / neutral), then tap a segment to jump to it in context |
 | **AI Chatbot** | Ask natural-language questions about the meeting; responses include speaker citations and timestamps |
+| **Multi-Session Chat** | Ask questions across multiple (or all) transcripts at once using TF-IDF retrieval; citations include the source filename and session |
 | **Transcript Viewer** | Colour-coded speaker segments or plain text view |
 | **CSV Export** | Download a formatted `.csv` of decisions, actions, and summary |
 | **PDF Export** | Download a formatted A4 PDF report |
-| **Chat History** | Conversation history persisted locally via `SharedPreferences` |
+| **Chat History** | Conversation history persisted locally via `SharedPreferences`; clears both locally and on the server |
 | **Backend Settings** | Configure and health-check the backend URL in-app |
-| **Dark Theme** | Polished dark UI with electric green accents |
+| **Dark Theme** | Polished dark UI with two theme options: electric green or deep blue accents |
 
 ---
 
@@ -81,7 +84,8 @@ meeting_intelligence_hub/
 │   ├── main.dart                    # App entry point, shell navigation
 │   │
 │   ├── theme/
-│   │   └── app_theme.dart           # Dark theme, colour palette, speaker colours
+│   │   ├── app_theme.dart           # Dark theme, colour palette, speaker colours (blue + green)
+│   │   └── theme_notifier.dart      # Theme persistence via SharedPreferences
 │   │
 │   ├── models/
 │   │   ├── session_model.dart       # Upload session data
@@ -92,12 +96,13 @@ meeting_intelligence_hub/
 │   │   └── api_service.dart         # All HTTP calls to the backend API
 │   │
 │   ├── screens/
-│   │   ├── upload_screen.dart       # Landing page — file picker + backend config
+│   │   ├── sessions_screen.dart     # Landing page — session list, upload, batch upload
 │   │   ├── dashboard_screen.dart    # Tab shell — extract / actions / analytics / chat / transcript
 │   │   ├── extraction_tab.dart      # AI extraction results UI
 │   │   ├── action_items_tab.dart    # Action item tracker with status, progress, deadline alerts
-│   │   ├── analytics_tab.dart       # Meeting analytics — talk time, sentiment, topics
-│   │   ├── chat_tab.dart            # Conversational Q&A UI
+│   │   ├── analytics_tab.dart       # Speaker analytics, sentiment drill-down, segment context view
+│   │   ├── chat_tab.dart            # Single-session conversational Q&A UI
+│   │   ├── multi_chat_screen.dart   # Cross-session chat — search across all transcripts
 │   │   ├── transcript_tab.dart      # Transcript viewer UI
 │   │   └── settings_screen.dart     # Backend URL, health check, storage
 │   │
@@ -136,15 +141,13 @@ This installs:
 | Package | Purpose |
 |---|---|
 | `http` | HTTP client for all API calls |
-| `file_picker` | Native file picker for `.txt`/`.vtt` |
-| `shared_preferences` | Persist chat history and settings |
+| `file_picker` | Native file picker for `.txt`/`.vtt` (single and multi-file) |
+| `shared_preferences` | Persist chat history, settings, and theme preference |
 | `path_provider` | Temp directory for exported files |
 | `open_filex` | Open exported CSV/PDF with the system viewer |
 | `url_launcher` | Open URLs from the app |
 | `permission_handler` | Storage permissions on Android |
-| `shimmer` | Loading skeleton animations |
-| `intl` | Date/time formatting |
-| `flutter_markdown` | Render markdown in chat responses |
+| `provider` | Theme state management |
 
 ### 3. iOS setup (Mac only)
 
@@ -201,8 +204,7 @@ The app ships with `http://10.0.2.2:8000` as the default backend URL (the correc
 
 You can change it at any time inside the app:
 
-- **Upload screen** → the Backend card → edit the URL field → tap **Set**
-- **Settings screen** (gear icon, top-right on upload screen) → Backend Configuration
+- **Sessions screen** → gear icon (top-right) → Settings → Backend Configuration
 
 | Environment | URL to use |
 |---|---|
@@ -289,30 +291,38 @@ flutter build ipa --release
 
 ## Screen Reference
 
-### Upload Screen
+### Sessions Screen
 
 The landing page. Shows:
 
-- **App header** — logo, title, description
-- **Backend card** — live status badge (Online/Offline), editable URL field, re-check button, and connection tips
-- **Upload card** — animated tap-to-pick area for `.txt` and `.vtt` files; shows upload progress and error messages
-- **Format guide** — example `.txt` and `.vtt` transcript formats
+- **App header** — logo, title, session count
+- **Multi-Chat button** — appears bottom-left when 2 or more sessions are loaded; opens cross-session chat
+- **New Transcript FAB** — bottom-right; opens the upload sheet
+- **Session cards** — swipe left to delete, tap to open the dashboard
+- **Upload sheet** — single file upload or batch upload for multiple files at once
 
 **Behaviour:**
-- Validates file extension before uploading (`.txt` or `.vtt` only)
-- On success → navigates to the Dashboard with the active session
-- Disables the upload button while the backend is offline
+- On first launch, restores all sessions from the backend silently (no navigation triggered)
+- Disables upload while the backend is offline
+- The gear icon (top-right) opens Settings
+
+---
+
+### Upload Sheet
+
+Accessible via the **New Transcript** FAB on the Sessions screen.
+
+- **Upload Transcript** — pick a single `.txt` or `.vtt` file; uploads immediately
+- **Batch Upload (multiple files)** — opens the file picker in multi-select mode; uploads all selected files concurrently via `POST /upload/batch`; shows per-file success/error results after completion
 
 ---
 
 ### Dashboard Screen
 
-The main shell after a successful upload. Contains:
+The main shell after opening a session. Contains:
 
-- **AppBar** — engine toggle (LLM ↔ NLP), session info button
-- **Session banner** — filename, segment count, speaker count
-- **Tab bar** — Extract / Actions / Analytics / Chat / Transcript
-- **Bottom bar** — CSV export, PDF export, New Upload buttons
+- **AppBar** — back button, filename, engine toggle (LLM ↔ NLP), Multi-Chat button (hub icon), Export button, Session Info button
+- **Bottom nav bar** — Extract / Actions / Analytics / Chat / Transcript / New
 
 #### Engine Toggle
 
@@ -324,7 +334,9 @@ The **LLM / NLP** pill in the AppBar switches the extraction engine:
 | Accuracy | Higher (understands context) | Good for clear language |
 | Offline | No (Groq) / Yes (Ollama) | Yes |
 
-Switching the engine automatically re-runs extraction with the new engine.
+#### Multi-Chat Button (hub icon)
+
+Opens the **Multi-Session Chat** screen scoped to all currently loaded sessions. Useful for asking questions that span across multiple meeting transcripts.
 
 ---
 
@@ -359,7 +371,7 @@ A dedicated task tracker for all action items extracted from the meeting:
 | Status | Colour |
 |---|---|
 | Pending | Muted grey |
-| In Progress | Accent blue |
+| In Progress | Accent blue/green |
 | Done | Green |
 | Blocked | Red |
 
@@ -369,30 +381,66 @@ A dedicated task tracker for all action items extracted from the meeting:
 
 A visual dashboard summarising meeting dynamics:
 
-- **Speaker talk-time** — breakdown of how much each participant spoke, shown as proportional bars with percentages
-- **Sentiment overview** — overall meeting tone and per-speaker sentiment indicators
-- **Topic distribution** — key topics detected in the transcript with relative frequency
-- **Engagement metrics** — turn-taking counts, average turn length, and other participation stats
+- **Stat cards** — speaker count, total words, segment count, question count
+- **Highlight row** — Most Talkative 🎤, Most Assigned ✅, Most Decisive ⚡
+- **Talk Share chart** — proportional horizontal bars per speaker; each row is **tappable** — tap any speaker to open the Sentiment Drill-Down screen
+- **Per-Speaker Breakdown table** — talk share %, questions asked, action items assigned, decisions made
 
 Pull down to refresh analytics.
+
+#### Sentiment Drill-Down Screen
+
+Opened by tapping a speaker row in the Talk Share chart.
+
+- Shows all transcript segments spoken by that speaker
+- Each segment is annotated with a keyword-derived sentiment label: 😊 Positive / 😟 Negative / 😐 Neutral
+- **Filter chips** — filter by All / Positive / Negative / Neutral; selected sentiment floats to the top
+- Tap any segment card to open the **Segment Context View**
+
+#### Segment Context View
+
+Opened by tapping a segment in the Sentiment Drill-Down screen.
+
+- Fetches the clicked segment from the backend along with the 2 segments before and after it
+- The target segment is highlighted with a "TARGET" badge and a glow border so it's immediately obvious in context
+- Allows you to read what was said immediately before and after a flagged statement without loading the full transcript
 
 ---
 
 ### Chat Tab
 
-Conversational Q&A over the transcript:
+Conversational Q&A over the current transcript:
 
 - **Suggestion chips** — tap to auto-fill example questions
-- **Message bubbles** — user messages right-aligned (blue tint), assistant messages left-aligned
+- **Message bubbles** — user messages right-aligned, assistant messages left-aligned
 - **Citations** — each AI response shows speaker name, timestamp, and the exact transcript excerpt used
 - **Typing indicator** — animated three-dot pulse while waiting
 - **Timing** — elapsed seconds and backend shown under each AI message
 - **Chat history** — persisted in `SharedPreferences`; survives app restarts within the same session
-- **Clear history** — removes both local cache and server-side history
+- **Clear history** — clears the conversation on the server first (`DELETE /sessions/{id}/chat/history`), then removes the local cache; shows a green confirmation or amber warning if the server was unreachable
 
 **Sending messages:**
-- Tap the blue send button, or press the `Enter` / `Send` keyboard action
+- Tap the send button, or press the `Enter` / `Send` keyboard action
 - The input field supports multiline input
+
+---
+
+### Multi-Session Chat Screen
+
+Accessible from the **hub icon** in the Dashboard AppBar, or from the **Multi-Chat FAB** (bottom-left) on the Sessions screen when 2+ sessions are loaded.
+
+Ask questions that span multiple meeting transcripts at once. The backend uses TF-IDF cosine similarity to retrieve the most relevant segments from each session, then answers with citations that include the source filename.
+
+- **Scope banner** — always shows how many sessions are being searched, with a "Change" link
+- **Session Picker sheet** — tap "Change" to choose specific sessions or revert to searching all of them
+- **Citations** — each citation includes the source filename, speaker name, timestamp, and excerpt; purple accent colour distinguishes multi-chat from single-session chat
+- **Suggestion prompts** — pre-filled cross-meeting questions to get started
+
+**Use cases:**
+- "What decisions were made across all meetings?"
+- "Who owns the most action items company-wide?"
+- "What topics came up in multiple meetings?"
+- "Summarise everything discussed this week."
 
 ---
 
@@ -409,9 +457,10 @@ Displays the parsed transcript:
 
 ### Settings Screen
 
-Accessible via the gear icon on the upload screen.
+Accessible via the gear icon (top-right) on the Sessions screen.
 
 - **Backend Configuration** — edit URL, test connection, view health data (version, extractor engine, active session count)
+- **Theme** — switch between Terminal Green and Deep Blue accent themes; preference is saved across restarts
 - **Storage** — clear all locally cached chat history
 - **About** — app version and links
 
@@ -424,16 +473,21 @@ All backend communication is in `lib/services/api_service.dart`. A static `baseU
 ### Workflow
 
 ```
-1. POST   /upload                                        Upload .txt/.vtt → SessionModel
-2. GET    /sessions/{id}/extract?engine=llm              Run AI extraction → ExtractionModel
-3. GET    /sessions/{id}/action-items                    Fetch action items with totals
-4. PATCH  /sessions/{id}/action-items/{item_id}/status  Update a single item's status
-5. GET    /sessions/{id}/action-items/alerts             Fetch overdue / due-soon alerts
-6. GET    /sessions/{id}/analytics                       Fetch meeting analytics data
-7. POST   /sessions/{id}/chat                            Send question → ChatResponse
-8. GET    /sessions/{id}/transcript                      View parsed transcript
-9. GET    /sessions/{id}/export/csv                      Download CSV bytes
-10. GET   /sessions/{id}/export/pdf                      Download PDF bytes
+1.  POST   /upload                                        Upload .txt/.vtt → SessionModel
+1b. POST   /upload/batch                                  Upload multiple files → list of results
+2.  GET    /sessions/{id}/extract?engine=llm              Run AI extraction → ExtractionModel
+3.  GET    /sessions/{id}/action-items                    Fetch action items with totals
+4.  PATCH  /sessions/{id}/action-items/{item_id}/status  Update a single item's status
+5.  GET    /sessions/{id}/action-items/alerts             Fetch overdue / due-soon alerts
+6.  GET    /sessions/{id}/analytics                       Fetch meeting analytics data
+7.  POST   /sessions/{id}/chat                            Send question → ChatResponse
+7b. POST   /chat/multi                                    Cross-session chat → answer + citations
+8.  GET    /sessions/{id}/transcript                      View parsed transcript
+8b. GET    /sessions/{id}/transcript/speaker/{name}       Speaker segments with sentiment labels
+8c. GET    /sessions/{id}/transcript/segment/{index}      Single segment with surrounding context
+9.  GET    /sessions/{id}/export/csv                      Download CSV bytes
+10. GET    /sessions/{id}/export/pdf                      Download PDF bytes
+11. DELETE /sessions/{id}/chat/history                    Clear server-side chat history
 ```
 
 ### Error handling
@@ -445,12 +499,15 @@ Timeouts:
 | Operation | Timeout |
 |---|---|
 | Health check | 10 seconds |
-| Upload | 30 seconds |
+| Upload (single) | 30 seconds |
+| Batch upload | 60 seconds |
 | Extraction (LLM) | 3 minutes |
-| Chat | 2 minutes |
+| Chat (single-session) | 2 minutes |
+| Multi-session chat | 2 minutes |
 | Action items / Analytics | 15 seconds |
 | Action item status update | 10 seconds |
 | Deadline alerts | 10 seconds |
+| Speaker segments / Segment context | 10–15 seconds |
 | Export | 30 seconds |
 
 ---
@@ -494,6 +551,24 @@ The file path returned by `file_picker` is null or inaccessible.
 
 ---
 
+### Batch upload shows partial errors
+
+If some files in a batch upload succeed and others fail, the app reports each result individually. Successfully uploaded sessions are added to the list immediately. Failed files show their error reason (e.g. unsupported format, empty file) in the upload sheet. You can retry individual failed files by tapping **Upload Transcript** for a single file.
+
+---
+
+### Multi-Chat returns "No sessions available"
+
+The backend must have at least one session loaded. If the app was restarted, sessions are restored from the server on startup — wait a moment for the restore to complete, or pull-to-refresh on the Sessions screen. Multi-Chat requires at least one session; the button only appears when sessions are present.
+
+---
+
+### Sentiment drill-down shows "No segments found"
+
+This means the speaker name in the analytics data doesn't match any segments exactly. This can happen if the transcript has inconsistent capitalisation (e.g. `alice` vs `Alice`). The backend matches speaker names case-insensitively, but double-check the speaker names in the Transcript tab.
+
+---
+
 ### `409 Conflict` on export
 
 Extraction must run before you can export. Navigate to the **Extract** tab and wait for it to finish, then try the export again.
@@ -502,7 +577,7 @@ Extraction must run before you can export. Navigate to the **Extract** tab and w
 
 ### Chat history is blank after reinstall
 
-`SharedPreferences` data is removed on app uninstall. This is expected — chat history is device-local only.
+`SharedPreferences` data is removed on app uninstall. This is expected — local chat history is device-local only. Server-side history can be fetched via the chat history endpoint if the session still exists on the backend.
 
 ---
 
@@ -833,7 +908,6 @@ Your frontend is now live at the S3 static website URL.
 ### Limitations of Free Tier
 
 - **No Ollama on t2.micro** — 1 GB RAM is insufficient. Use Groq (free) or NLP mode.
-- **In-memory sessions** — the backend loses all sessions on restart. Consider adding a SQLite persistence layer for production (see backend README).
 - **Single instance** — no auto-scaling. For a personal or small-team tool, this is fine.
 - **750 hours/month** = one instance running continuously (24 × 31 = 744 hours). Don't run a second t2.micro or you'll exceed the limit.
 

@@ -8,6 +8,7 @@ import 'services/api_service.dart';
 import 'screens/sessions_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/multi_chat_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -107,11 +108,25 @@ class _AppShellState extends State<_AppShell> {
     );
   }
 
+  void _openMultiChat() {
+    if (_sessions.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MultiChatScreen(
+          allSessionIds: _sessions.map((s) => s.sessionId).toList(),
+          sessionFilenames: {for (final s in _sessions) s.sessionId: s.filename},
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_activeSession != null) {
       return DashboardScreen(
         session: _activeSession!,
+        allSessions: _sessions,
         onNewUpload: _onClose,
         onBack: _onClose,
       );
@@ -124,6 +139,7 @@ class _AppShellState extends State<_AppShell> {
       onUploadSuccess: _onUploadSuccess,
       onSessionsRestored: _onSessionsRestored,
       onOpenSettings: _openSettings,
+      onOpenMultiChat: _sessions.length > 1 ? _openMultiChat : null,
     );
   }
 }

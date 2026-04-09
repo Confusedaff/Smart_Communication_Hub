@@ -69,7 +69,7 @@ class _ChatTabState extends State<ChatTab> {
         title: Text('Clear conversation?',
             style: TextStyle(color: t.textPrimary, fontSize: 16)),
         content: Text(
-            'This will remove all messages from this session.',
+            'This clears the conversation locally and on the server.',
             style: TextStyle(color: t.textSecondary, fontSize: 13)),
         actions: [
           TextButton(
@@ -85,12 +85,39 @@ class _ChatTabState extends State<ChatTab> {
     );
     if (confirmed != true) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_storageKey);
+    // Clear server-side history first
+    bool serverCleared = false;
     try {
       await ApiService.clearChatHistory(widget.sessionId);
-    } catch (_) {}
-    setState(() => _messages.clear());
+      serverCleared = true;
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Server error: ${e.message}. Local history cleared.'),
+          backgroundColor: t.accentAmber,
+        ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Could not reach server. Local history cleared.'),
+          backgroundColor: t.accentAmber,
+        ));
+      }
+    }
+
+    // Always clear local storage and state
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_storageKey);
+    if (mounted) {
+      setState(() => _messages.clear());
+      if (serverCleared) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Conversation cleared.'),
+          backgroundColor: t.accentGreen,
+        ));
+      }
+    }
   }
 
   Future<void> _sendMessage() async {

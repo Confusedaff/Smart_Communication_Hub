@@ -10,15 +10,18 @@ import 'chat_tab.dart';
 import 'transcript_tab.dart';
 import 'action_items_tab.dart';
 import 'analytics_tab.dart';
+import 'multi_chat_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final SessionModel session;
+  final List<SessionModel> allSessions;
   final VoidCallback onNewUpload;
   final VoidCallback? onBack;
 
   const DashboardScreen({
     super.key,
     required this.session,
+    this.allSessions = const [],
     required this.onNewUpload,
     this.onBack,
   });
@@ -32,6 +35,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _engine = 'llm';
   bool _isExporting = false;
   int _alertCount = 0;
+
+  void _openMultiChat(BuildContext context) {
+    final all = widget.allSessions.isNotEmpty
+        ? widget.allSessions
+        : [widget.session];
+    final ids = all.map((s) => s.sessionId).toList();
+    final names = {for (final s in all) s.sessionId: s.filename};
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MultiChatScreen(
+          allSessionIds: ids,
+          sessionFilenames: names,
+        ),
+      ),
+    );
+  }
 
   Future<void> _exportCsv() async {
     setState(() => _isExporting = true);
@@ -335,6 +355,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onPressed: _showExportSheet,
                 tooltip: 'Export',
               ),
+        IconButton(
+          icon: const Icon(Icons.hub_outlined, size: 20),
+          onPressed: () => _openMultiChat(context),
+          tooltip: 'Multi-session chat',
+        ),
         IconButton(
           icon: const Icon(Icons.info_outline, size: 20),
           onPressed: _showSessionInfo,
