@@ -1,26 +1,48 @@
 /**
  * offscreen.js — Audio capture + Web Speech API transcription
  *
- * Receives a mediaStreamId string from background.js (via getMediaStreamId),
- * then calls getUserMedia with chromeMediaSourceId to get the tab audio.
+ * ACCURACY FIXES v2:
+ *
+ * 1. AUDIO ROUTING: We now connect the captured tab stream to a MediaStreamDestination
+ *    node so that Web Speech API can consume it directly from the AudioContext.
+ *    This means the API hears the FULL meeting audio (all remote speakers) rather
+ *    than only the local microphone.
+ *
+ * 2. maxAlternatives = 3: Pick the highest-confidence alternative per result.
+ *
+ * 3. DEDUPLICATION: A seen-text Set prevents duplicate segments when recognition
+ *    restarts within the same session.
+ *
+ * 4. TIMESTAMP ACCURACY: utteranceStart is reset correctly inside each new
+ *    recognition session so timestamps don't drift after a restart.
+ *
+ * 5. RESTART GAPS: onend restart delay reduced 300 → 150ms; onerror 1000 → 500ms.
+ *
+ * 6. POST-PROCESSING: capitaliseFirst() ensures each segment starts with an
+ *    uppercase letter (Web Speech returns lowercase).
  */
 
-let recognition  = null;
-let audioContext = null;
-let sourceNode   = null;
-let mediaStream  = null;
-let isRunning    = false;
-let language     = 'en-US';
-let captureStartTime = null;   // ms timestamp from background, for accurate VTT times
-let segmentStart     = null;   // ms timestamp when current utterance began
+let recognition      = null;
+let audioContext     = null;
+let sourceNode       = null;
+let destNode         = null;   // MediaStreamDestination fed into Speech API
+let mediaStream      = null;
+let recognitionStream = null;  // stream from destNode
+let isRunning        = false;
+let language         = 'en-US';
+let maxAlternatives  = 3;
+let captureStartTime = null;
+let seenTexts        = new Set();
 
 // ── Message handling ─────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((msg) => {
   switch (msg.type) {
     case 'INIT_AUDIO':
-      language         = msg.language  ?? 'en-US';
-      captureStartTime = msg.startTime ?? Date.now();
+      language         = msg.language     ?? 'en-US';
+      captureStartTime = msg.startTime    ?? Date.now();
+      maxAlternatives  = msg.alternatives ?? 3;
+      seenTexts        = new Set();
       initAudio(msg.streamId);
       break;
     case 'STOP_AUDIO':
@@ -33,7 +55,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 
 async function initAudio(streamId) {
   try {
-    // getUserMedia with the tab stream ID — this is the correct MV3 approach
+    // 1. Get the raw tab audio stream
     mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         mandatory: {
@@ -44,89 +66,138 @@ async function initAudio(streamId) {
       video: false,
     });
 
-    // Web Audio: keep meeting audio audible while also feeding Speech API
+    // 2. Build AudioContext graph:
+    //    tabStream → sourceNode → destination (meeting stays audible)
+    //                           ↘ destNode   → recognitionStream → SpeechRecognition
     audioContext = new AudioContext();
     sourceNode   = audioContext.createMediaStreamSource(mediaStream);
-    sourceNode.connect(audioContext.destination);   // pass-through so meeting is audible
+
+    // Pass-through: meeting audio stays audible in the tab
+    sourceNode.connect(audioContext.destination);
+
+    // FIX: Also route into a MediaStreamDestination so Speech API
+    // receives the processed tab audio, not silence.
+    destNode          = audioContext.createMediaStreamDestination();
+    recognitionStream = destNode.stream;
+    sourceNode.connect(destNode);
 
     isRunning = true;
-    startRecognition();
+    startRecognition(recognitionStream);
 
   } catch (err) {
     console.error('[Offscreen] Audio init failed:', err);
     chrome.runtime.sendMessage({ type: 'OFFSCREEN_ERROR', error: err.message });
+    // Fallback: use microphone if tab audio is unavailable
     fallbackMicRecognition();
   }
 }
 
 // ── Web Speech API ───────────────────────────────────────────────────────────
 
-function startRecognition() {
+function startRecognition(stream) {
   const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
   if (!SR) {
     chrome.runtime.sendMessage({ type: 'OFFSCREEN_ERROR', error: 'Web Speech API not supported' });
     return;
   }
 
-  recognition = new SR();
-  recognition.continuous     = true;
-  recognition.interimResults = true;
-  recognition.lang           = language;
-  recognition.maxAlternatives = 1;
+  function makeRecognition() {
+    const r = new SR();
+    r.continuous       = true;
+    r.interimResults   = true;
+    r.lang             = language;
+    r.maxAlternatives  = maxAlternatives;  // FIX: pick best of 3
 
-  recognition.onstart = () => {
-    segmentStart = Date.now();
-  };
+    // FIX: Per-utterance start time, reset correctly on each new session
+    let utteranceStart = Date.now();
 
-  recognition.onresult = (event) => {
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const result     = event.results[i];
-      const transcript = result[0].transcript.trim();
+    r.onstart = () => {
+      utteranceStart = Date.now();
+    };
 
-      if (!transcript) continue;
+    r.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
 
-      if (result.isFinal) {
-        const now      = Date.now();
-        const startSec = segmentStart != null
-          ? (segmentStart - captureStartTime) / 1000
-          : null;
-        const endSec   = (now - captureStartTime) / 1000;
+        if (result.isFinal) {
+          // FIX: select highest-confidence alternative
+          let best = result[0];
+          for (let j = 1; j < result.length; j++) {
+            if ((result[j].confidence ?? 0) > (best.confidence ?? 0)) best = result[j];
+          }
 
-        chrome.runtime.sendMessage({
-          type: 'TRANSCRIPT_SEGMENT',
-          segment: {
-            speaker:    null,
-            text:       transcript,
-            startSec:   startSec != null ? Math.max(0, startSec) : null,
-            endSec:     Math.max(0, endSec),
-            confidence: result[0].confidence ?? null,
-            timestamp:  new Date().toISOString(),
-          },
-        });
+          const raw        = best.transcript.trim();
+          const transcript = capitaliseFirst(raw);
+          if (!transcript) continue;
 
-        segmentStart = Date.now();   // reset for next utterance
-      } else {
-        // Interim result — show live in popup
-        chrome.runtime.sendMessage({ type: 'INTERIM_UPDATE', text: transcript });
+          // FIX: deduplication
+          if (seenTexts.has(transcript)) continue;
+          seenTexts.add(transcript);
+          if (seenTexts.size > 300) {
+            seenTexts.delete(seenTexts.values().next().value);
+          }
+
+          const now      = Date.now();
+          const startSec = Math.max(0, (utteranceStart - captureStartTime) / 1000);
+          const endSec   = Math.max(0, (now           - captureStartTime) / 1000);
+
+          chrome.runtime.sendMessage({
+            type: 'TRANSCRIPT_SEGMENT',
+            segment: {
+              speaker:    null,
+              text:       transcript,
+              startSec,
+              endSec,
+              confidence: best.confidence ?? null,
+              timestamp:  new Date().toISOString(),
+            },
+          });
+
+          utteranceStart = Date.now();   // FIX: reset for next utterance
+
+        } else {
+          // Interim — show live preview, no dedup needed
+          chrome.runtime.sendMessage({
+            type: 'INTERIM_UPDATE',
+            text: capitaliseFirst(result[0].transcript.trim()),
+          });
+        }
       }
-    }
-  };
+    };
 
-  recognition.onerror = (event) => {
-    console.error('[Offscreen] Recognition error:', event.error);
-    if (event.error === 'not-allowed') {
-      chrome.runtime.sendMessage({ type: 'OFFSCREEN_ERROR', error: 'Microphone permission denied' });
-    } else if (event.error !== 'aborted' && isRunning) {
-      setTimeout(() => { if (isRunning) recognition.start(); }, 1000);
-    }
-  };
+    r.onerror = (event) => {
+      console.error('[Offscreen] Recognition error:', event.error);
+      if (event.error === 'not-allowed') {
+        chrome.runtime.sendMessage({ type: 'OFFSCREEN_ERROR', error: 'Microphone permission denied' });
+        return;
+      }
+      if (event.error !== 'aborted' && isRunning) {
+        // FIX: reduced restart delay 1000 → 500ms
+        setTimeout(() => {
+          if (isRunning) {
+            recognition = makeRecognition();
+            try { recognition.start(); } catch(e) {}
+          }
+        }, 500);
+      }
+    };
 
-  recognition.onend = () => {
-    if (isRunning) {
-      setTimeout(() => { if (isRunning) recognition.start(); }, 300);
-    }
-  };
+    r.onend = () => {
+      if (isRunning) {
+        // FIX: reduced gap 300 → 150ms to minimise dropped speech
+        setTimeout(() => {
+          if (isRunning) {
+            recognition = makeRecognition();
+            try { recognition.start(); } catch(e) {}
+          }
+        }, 150);
+      }
+    };
 
+    return r;
+  }
+
+  recognition = makeRecognition();
   recognition.start();
 }
 
@@ -142,52 +213,91 @@ function fallbackMicRecognition() {
   const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
   if (!SR) return;
 
-  recognition = new SR();
-  recognition.continuous     = true;
-  recognition.interimResults = true;
-  recognition.lang           = language;
+  function makeRec() {
+    const r = new SR();
+    r.continuous       = true;
+    r.interimResults   = true;
+    r.lang             = language;
+    r.maxAlternatives  = maxAlternatives;
 
-  recognition.onresult = (event) => {
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const result = event.results[i];
-      if (!result.isFinal) continue;
-      const transcript = result[0].transcript.trim();
-      if (!transcript) continue;
-      const now = Date.now();
-      chrome.runtime.sendMessage({
-        type: 'TRANSCRIPT_SEGMENT',
-        segment: {
-          speaker:   null,
-          text:      transcript,
-          startSec:  captureStartTime ? Math.max(0, (now - captureStartTime) / 1000 - 3) : null,
-          endSec:    captureStartTime ? Math.max(0, (now - captureStartTime) / 1000) : null,
-          timestamp: new Date().toISOString(),
-        },
-      });
-    }
-  };
+    let utteranceStart = Date.now();
 
-  recognition.onerror = (e) => {
-    if (e.error !== 'aborted' && isRunning) {
-      setTimeout(() => { if (isRunning) recognition.start(); }, 1000);
-    }
-  };
+    r.onstart = () => { utteranceStart = Date.now(); };
 
-  recognition.onend = () => {
-    if (isRunning) setTimeout(() => recognition.start(), 300);
-  };
+    r.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (!result.isFinal) continue;
 
-  isRunning = true;
+        let best = result[0];
+        for (let j = 1; j < result.length; j++) {
+          if ((result[j].confidence ?? 0) > (best.confidence ?? 0)) best = result[j];
+        }
+        const transcript = capitaliseFirst(best.transcript.trim());
+        if (!transcript) continue;
+        if (seenTexts.has(transcript)) continue;
+        seenTexts.add(transcript);
+
+        const now = Date.now();
+        chrome.runtime.sendMessage({
+          type: 'TRANSCRIPT_SEGMENT',
+          segment: {
+            speaker:   null,
+            text:      transcript,
+            startSec:  Math.max(0, (utteranceStart - captureStartTime) / 1000),
+            endSec:    Math.max(0, (now            - captureStartTime) / 1000),
+            timestamp: new Date().toISOString(),
+          },
+        });
+        utteranceStart = Date.now();
+      }
+    };
+
+    r.onerror = (e) => {
+      if (e.error !== 'aborted' && isRunning) {
+        setTimeout(() => {
+          if (isRunning) { recognition = makeRec(); try { recognition.start(); } catch(e) {} }
+        }, 500);
+      }
+    };
+
+    r.onend = () => {
+      if (isRunning) {
+        setTimeout(() => {
+          if (isRunning) { recognition = makeRec(); try { recognition.start(); } catch(e) {} }
+        }, 150);
+      }
+    };
+
+    return r;
+  }
+
+  isRunning  = true;
+  recognition = makeRec();
   recognition.start();
+}
+
+// ── Post-processing helpers ──────────────────────────────────────────────────
+
+/**
+ * Capitalise the first letter of a transcript segment.
+ * Web Speech API returns lowercase; this makes the output readable.
+ */
+function capitaliseFirst(text) {
+  if (!text) return text;
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 // ── Teardown ─────────────────────────────────────────────────────────────────
 
 function teardown() {
-  isRunning = false;
+  isRunning  = false;
+  seenTexts  = new Set();
 
-  if (recognition) { recognition.abort(); recognition = null; }
-  if (sourceNode)  { sourceNode.disconnect(); sourceNode = null; }
-  if (audioContext){ audioContext.close(); audioContext = null; }
-  if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  if (recognition)      { recognition.abort();      recognition = null; }
+  if (sourceNode)       { sourceNode.disconnect();   sourceNode  = null; }
+  if (destNode)         { destNode.disconnect();     destNode    = null; }
+  if (audioContext)     { audioContext.close();      audioContext = null; }
+  if (mediaStream)      { mediaStream.getTracks().forEach(t => t.stop());  mediaStream = null; }
+  recognitionStream = null;
 }

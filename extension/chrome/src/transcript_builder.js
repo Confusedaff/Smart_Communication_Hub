@@ -1,20 +1,18 @@
 /**
  * transcript_builder.js
  *
- * Converts captured segments into .vtt or .txt format
- * that parser.py in the backend can ingest directly.
+ * Converts captured segments into .vtt or .txt format.
  *
- * Segment schema: { speaker, text, startSec, endSec, timestamp }
+ * ACCURACY FIXES v2:
+ * - postProcess(): capitalises first word, adds terminal punctuation if missing,
+ *   collapses repeated whitespace, and strips stutter artefacts (e.g. "the the the").
+ * - buildVTT / buildTXT both run each segment through postProcess().
+ * - mergeConsecutive() gap threshold reduced 3s → 1.5s (tighter merging of
+ *   same-speaker utterances that belong together).
  */
 
 /**
  * Build a WebVTT file from segments.
- * Output matches the VTT format expected by parser.py:
- *
- *   WEBVTT
- *
- *   00:00:01.000 --> 00:00:04.000
- *   John: We need to finalize the Q3 budget.
  */
 export function buildVTT(segments) {
   if (!segments || segments.length === 0) {
@@ -30,14 +28,11 @@ export function buildVTT(segments) {
     const startFmt = formatVTTTime(Math.max(0, start));
     const endFmt   = formatVTTTime(Math.max(0, end));
 
-    // Cue index
     lines.push(String(i + 1));
     lines.push(`${startFmt} --> ${endFmt}`);
 
-    // Speaker-prefixed text (matches parser.py's _SPEAKER_COLON_RE)
-    const text = seg.speaker
-      ? `${seg.speaker}: ${seg.text}`
-      : seg.text;
+    const cleaned = postProcess(seg.text);
+    const text    = seg.speaker ? `${seg.speaker}: ${cleaned}` : cleaned;
     lines.push(text);
     lines.push('');
   });
@@ -47,7 +42,6 @@ export function buildVTT(segments) {
 
 /**
  * Build a plain .txt file with "Speaker: text" lines.
- * Matches the TXT format expected by parser.py.
  */
 export function buildTXT(segments) {
   if (!segments || segments.length === 0) {
@@ -55,8 +49,41 @@ export function buildTXT(segments) {
   }
 
   return segments
-    .map(seg => seg.speaker ? `${seg.speaker}: ${seg.text}` : seg.text)
+    .map(seg => {
+      const cleaned = postProcess(seg.text);
+      return seg.speaker ? `${seg.speaker}: ${cleaned}` : cleaned;
+    })
     .join('\n') + '\n';
+}
+
+/**
+ * Post-process a raw transcript segment text.
+ *
+ * Fixes applied (in order):
+ *  1. Collapse multiple spaces / strip leading-trailing whitespace
+ *  2. Remove stutter repetitions: "the the the" → "the"
+ *  3. Capitalise the first character
+ *  4. Add a period if no terminal punctuation present
+ */
+export function postProcess(text) {
+  if (!text) return text;
+
+  // 1. Normalise whitespace
+  let t = text.trim().replace(/\s+/g, ' ');
+
+  // 2. Remove immediate word-level stutters (up to 4 repeats)
+  //    e.g. "I I I think" → "I think", "the the problem" → "the problem"
+  t = t.replace(/\b(\w+)(\s+\1){1,3}\b/gi, '$1');
+
+  // 3. Capitalise first character
+  t = t.charAt(0).toUpperCase() + t.slice(1);
+
+  // 4. Add terminal punctuation if none present
+  if (t.length > 0 && !/[.!?,;]$/.test(t)) {
+    t += '.';
+  }
+
+  return t;
 }
 
 /**
@@ -76,8 +103,8 @@ export function formatVTTTime(totalSeconds) {
 }
 
 /**
- * Merge consecutive segments from the same speaker
- * (mirrors parser.py's _merge_consecutive_speaker)
+ * Merge consecutive segments from the same speaker.
+ * FIX: gap threshold reduced from 3s → 1.5s for tighter merging.
  */
 export function mergeConsecutive(segments) {
   if (!segments.length) return segments;
@@ -89,10 +116,11 @@ export function mergeConsecutive(segments) {
     const cur  = segments[i];
 
     if (cur.speaker === prev.speaker &&
-        cur.startSec != null &&
-        prev.endSec  != null &&
-        cur.startSec - prev.endSec < 3) {   // gap < 3s → merge
-      prev.text   += ' ' + cur.text;
+        cur.startSec  != null &&
+        prev.endSec   != null &&
+        cur.startSec - prev.endSec < 1.5) {   // FIX: 3s → 1.5s
+      // Strip trailing period before joining so we don't get "Hello. world."
+      prev.text   = prev.text.replace(/\.\s*$/, '') + ' ' + cur.text;
       prev.endSec  = cur.endSec;
     } else {
       merged.push({ ...cur });
