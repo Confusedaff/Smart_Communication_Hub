@@ -14,7 +14,7 @@
 | Idle — ready to record | <img width="2879" height="1617" alt="Image" src="https://github.com/user-attachments/assets/eba7b2c9-a48f-403e-a72f-8e4a9bbc8e5a" />|
 | Active — recording in progress | <img width="2879" height="1624" alt="Image" src="https://github.com/user-attachments/assets/9d4f3e5a-5b20-4d77-841f-2aaa516c30a4" /> |
 | Live transcript feed | <img width="2879" height="1600" alt="Image" src="https://github.com/user-attachments/assets/0de19465-dd62-428c-a403-ae965ebb517c" /> |
-| Settings panel | <img width="2879" height="1622" alt="Image" src="https://github.com/user-attachments/assets/4200de67-85dc-49ee-b4b8-1e5fbe5d923f" /> |
+| Settings panel | <img width="745" height="661" alt="Image" src="https://github.com/user-attachments/assets/b9fc805b-8b3c-4613-b37f-e82f15be26e9" />|
 | Auto-saved file in Downloads | <img width="1439" height="181" alt="Image" src="https://github.com/user-attachments/assets/c6fbf758-9950-44fd-b68e-d785abcb8a70" /> |
 
 ---
