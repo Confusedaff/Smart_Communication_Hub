@@ -4,6 +4,12 @@
 
 ---
 
+## 🎬 Demo Video
+
+▶️ [Watch the full demo on Google Drive](https://drive.google.com/file/d/1Mg1WQGFhCF5k4q0KHJo6NhZ_-hk5QnL1/view?usp=sharing)
+
+---
+
 ## Screenshots
 
 <img width="2879" height="1746" alt="Upload Page" src="https://github.com/user-attachments/assets/43d71f63-a7d6-40a4-b036-dcf06e9b303c" />
