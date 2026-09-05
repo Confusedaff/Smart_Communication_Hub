@@ -302,7 +302,7 @@ void UploadWidget::setupUi() {
         "font-family:'JetBrains Mono','Consolas',monospace;"
     );
 
-    m_dropSubLabel = new QLabel("or click anywhere here to browse  ·  .txt or .vtt", m_dropZone);
+    m_dropSubLabel = new QLabel("or click anywhere here to browse  ·  .txt, .vtt, or .pdf", m_dropZone);
     m_dropSubLabel->setAlignment(Qt::AlignCenter);
     m_dropSubLabel->setStyleSheet(
         "color:#8b949e; font-size:12px; background:transparent;"
@@ -328,6 +328,7 @@ void UploadWidget::setupUi() {
     };
     badgeLayout->addWidget(makeBadge(".TXT"));
     badgeLayout->addWidget(makeBadge(".VTT"));
+    badgeLayout->addWidget(makeBadge(".PDF"));
 
     m_spinner = new LoadingSpinner(m_dropZone, 32, 3);
     m_spinner->hide();
@@ -450,7 +451,7 @@ void UploadWidget::openFileBrowser() {
     if (m_uploading) return;
     QString path = QFileDialog::getOpenFileName(
         this, "Open Transcript", "",
-        "Transcript Files (*.txt *.vtt);;All Files (*)"
+        "Transcript Files (*.txt *.vtt *.pdf);;All Files (*)"
     );
     if (!path.isEmpty())
         emit fileDropped(path);
@@ -515,7 +516,7 @@ void UploadWidget::setDragHighlight(bool on) {
 
 bool UploadWidget::isValidFile(const QString& path) {
     QString ext = QFileInfo(path).suffix().toLower();
-    return ext == "txt" || ext == "vtt";
+    return ext == "txt" || ext == "vtt" || ext == "pdf";
 }
 
 // ── Event filter: catch mouse release inside drop zone or any child ──────────

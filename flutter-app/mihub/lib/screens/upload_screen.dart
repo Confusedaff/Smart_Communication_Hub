@@ -154,7 +154,7 @@ class _UploadScreenState extends State<UploadScreen>
 
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['txt', 'vtt'],
+      allowedExtensions: ['txt', 'vtt', 'pdf'],
     );
 
     if (result == null || result.files.isEmpty) return;
@@ -166,8 +166,8 @@ class _UploadScreenState extends State<UploadScreen>
     }
 
     final ext = path.split('.').last.toLowerCase();
-    if (ext != 'txt' && ext != 'vtt') {
-      setState(() => _errorMessage = 'Only .txt and .vtt files are supported.');
+    if (ext != 'txt' && ext != 'vtt' && ext != 'pdf') {
+      setState(() => _errorMessage = 'Only .txt, .vtt, and .pdf files are supported.');
       return;
     }
 
@@ -348,7 +348,7 @@ class _UploadScreenState extends State<UploadScreen>
                     ),
                     const SizedBox(height: 6),
                     if (!_isUploading)
-                      Text('.txt  ·  .vtt',
+                      Text('.txt  ·  .vtt  ·  .pdf',
                           style: TextStyle(
                               color: t.textMuted,
                               fontSize: 12,

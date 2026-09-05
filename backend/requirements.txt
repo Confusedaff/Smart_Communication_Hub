@@ -5,6 +5,7 @@ python-multipart>=0.0.9
 reportlab>=4.2.0
 spacy>=3.7.0
 python-dotenv>=1.0.0
+pypdf>=4.3.0
 
 # Database (Postgres — required for persistent users + per-user session history)
 asyncpg>=0.29.0

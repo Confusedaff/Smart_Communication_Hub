@@ -1,6 +1,6 @@
 # Meeting Intelligence Hub — Backend
 
-A FastAPI backend that turns raw meeting transcripts (`.txt` / `.vtt`) into structured intelligence: decisions, action items, a summary, and a contextual Q&A chatbot — all exportable as CSV or PDF.
+A FastAPI backend that turns raw meeting transcripts (`.txt`, `.vtt`, or `.pdf`) into structured intelligence: decisions, action items, a summary, and a contextual Q&A chatbot — all exportable as CSV or PDF.
 
 > The web frontend that connects to this backend is documented in [`web/README.md`](../web/README.md).
 
@@ -45,7 +45,7 @@ A FastAPI backend that turns raw meeting transcripts (`.txt` / `.vtt`) into stru
 POST /auth/register or /auth/login  → returns a JWT
        │
        ▼
-Upload .txt / .vtt   (Authorization: Bearer <token> on every request)
+Upload .txt / .vtt / .pdf   (Authorization: Bearer <token> on every request)
        │
        ▼
   parser.py            → parses speakers, timestamps, segments
@@ -342,13 +342,19 @@ Returns timing estimates for **both** Groq and Ollama simultaneously — used by
 ### Upload
 
 #### `POST /upload`
-Upload a `.txt` or `.vtt` transcript file.
+Upload a `.txt`, `.vtt`, or `.pdf` transcript file. PDFs are read via their text
+layer (`pypdf`) — scanned/image-only PDFs with no embedded text will return a
+`422` asking for a `.txt`/`.vtt` export instead.
 
 **Request:** `multipart/form-data` with field `file`
 
 ```bash
 curl -X POST http://localhost:8000/upload \
   -F "file=@my_meeting.vtt"
+
+# PDF works the same way
+curl -X POST http://localhost:8000/upload \
+  -F "file=@my_meeting.pdf"
 ```
 
 **Response `201`:**
@@ -367,12 +373,14 @@ curl -X POST http://localhost:8000/upload \
 ```
 
 #### `POST /upload/batch`
-Upload multiple transcript files at once. Returns an array of results (one per file).
+Upload multiple transcript files at once (`.txt`, `.vtt`, `.pdf` — mixed types
+are fine). Returns an array of results (one per file).
 
 ```bash
 curl -X POST http://localhost:8000/upload/batch \
   -F "files=@meeting1.vtt" \
-  -F "files=@meeting2.txt"
+  -F "files=@meeting2.txt" \
+  -F "files=@meeting3.pdf"
 ```
 
 ---
@@ -959,7 +967,7 @@ These are estimates — actual times depend on your hardware and model size. The
 ```
 backend/
 ├── main.py               # FastAPI app — all routes and startup config
-├── parser.py             # Parses .txt and .vtt files into segments
+├── parser.py             # Parses .txt, .vtt, and .pdf files into segments
 ├── extractor.py          # LLM-based extraction (decisions, actions, summary)
 ├── custom_extractor.py   # spaCy NLP offline extraction engine
 ├── chatbot.py            # Contextual Q&A with citations over the transcript
@@ -977,7 +985,7 @@ backend/
 
 ## Transcript Format Guide
 
-The backend accepts `.txt` and `.vtt` files.
+The backend accepts `.txt`, `.vtt`, and `.pdf` files (PDFs need an extractable text layer).
 
 ### Plain text (`.txt`)
 

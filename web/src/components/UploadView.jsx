@@ -12,8 +12,8 @@ export default function UploadView({ onSuccess, sessionCount, onOpenHistory, use
   const handleFile = useCallback(async (file) => {
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
-    if (!["txt", "vtt"].includes(ext)) {
-      setError("Only .txt and .vtt files are supported.");
+    if (!["txt", "vtt", "pdf"].includes(ext)) {
+      setError("Only .txt, .vtt, and .pdf files are supported.");
       return;
     }
     setError(null);
@@ -75,7 +75,7 @@ export default function UploadView({ onSuccess, sessionCount, onOpenHistory, use
           <input
             ref={inputRef}
             type="file"
-            accept=".txt,.vtt"
+            accept=".txt,.vtt,.pdf"
             hidden
             onChange={(e) => handleFile(e.target.files[0])}
           />
@@ -95,10 +95,11 @@ export default function UploadView({ onSuccess, sessionCount, onOpenHistory, use
                 </svg>
               </div>
               <p className="drop-label">Drop your transcript here</p>
-              <p className="drop-sub">or click to browse &nbsp;·&nbsp; .txt or .vtt</p>
+              <p className="drop-sub">or click to browse &nbsp;·&nbsp; .txt, .vtt, or .pdf</p>
               <div className="drop-formats">
                 <span className="badge">.TXT</span>
                 <span className="badge">.VTT</span>
+                <span className="badge">.PDF</span>
               </div>
             </div>
           )}

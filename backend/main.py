@@ -296,17 +296,24 @@ async def upload_transcript(file: UploadFile = File(...), user: dict = Depends(a
     filename = file.filename or "transcript"
     ext = filename.rsplit(".", 1)[-1].lower()
 
-    if ext not in ("txt", "vtt"):
+    if ext not in ("txt", "vtt", "pdf"):
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type '.{ext}'. Only .txt and .vtt are accepted.",
+            detail=f"Unsupported file type '.{ext}'. Only .txt, .vtt, and .pdf are accepted.",
         )
 
     raw_bytes = await file.read()
-    try:
-        content = raw_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        content = raw_bytes.decode("latin-1")
+
+    if ext == "pdf":
+        try:
+            content = parser.extract_pdf_text(raw_bytes)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+    else:
+        try:
+            content = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            content = raw_bytes.decode("latin-1")
 
     if not content.strip():
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
@@ -351,13 +358,19 @@ async def upload_batch(files: list[UploadFile] = File(...), user: dict = Depends
     async def _process_one(file: UploadFile) -> dict:
         filename = file.filename or "transcript"
         ext = filename.rsplit(".", 1)[-1].lower()
-        if ext not in ("txt", "vtt"):
+        if ext not in ("txt", "vtt", "pdf"):
             return {"filename": filename, "error": f"Unsupported type '.{ext}'"}
         raw_bytes = await file.read()
-        try:
-            content = raw_bytes.decode("utf-8")
-        except UnicodeDecodeError:
-            content = raw_bytes.decode("latin-1")
+        if ext == "pdf":
+            try:
+                content = parser.extract_pdf_text(raw_bytes)
+            except ValueError as exc:
+                return {"filename": filename, "error": str(exc)}
+        else:
+            try:
+                content = raw_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                content = raw_bytes.decode("latin-1")
         if not content.strip():
             return {"filename": filename, "error": "File is empty"}
         raw_text, segs = parser.parse(filename, content)

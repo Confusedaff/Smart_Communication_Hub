@@ -1,5 +1,5 @@
 """
-parser.py — Parse .TXT and .VTT transcript files into structured segments.
+parser.py — Parse .TXT, .VTT, and .PDF transcript files into structured segments.
 
 VTT format example:
     WEBVTT
@@ -14,10 +14,23 @@ TXT format example (plain or speaker-prefixed):
     John: We need to finalize the Q3 budget by Friday.
     Sarah: Agreed, I'll own the finance section.
     (or just plain paragraphs with no speaker labels)
+
+PDF format:
+    Any PDF with a text layer (exported transcripts, meeting notes,
+    scanned-and-OCR'd documents that already carry embedded text).
+    Text is extracted page-by-page and then parsed the same way plain
+    .txt content is — one line per utterance, optional "Speaker: " prefix.
 """
 
+import io
 import re
 from typing import Optional
+
+try:
+    from pypdf import PdfReader
+    _PYPDF_OK = True
+except ImportError:
+    _PYPDF_OK = False
 
 
 # ── Segment schema ──────────────────────────────────────────────────────────
@@ -38,6 +51,46 @@ def parse(filename: str, content: str) -> tuple[str, list[dict]]:
 
     raw_text = _segments_to_plain(segments)
     return raw_text, segments
+
+
+def extract_pdf_text(raw_bytes: bytes) -> str:
+    """
+    Extract plain text from a PDF's text layer, page by page.
+    Raises ValueError if pypdf isn't installed or no extractable text is found
+    (e.g. a scanned/image-only PDF with no OCR text layer).
+    """
+    if not _PYPDF_OK:
+        raise ValueError(
+            "PDF support requires the 'pypdf' package. Install it with: pip install pypdf"
+        )
+
+    try:
+        reader = PdfReader(io.BytesIO(raw_bytes))
+    except Exception as exc:
+        raise ValueError(f"Could not read PDF file: {exc}") from exc
+
+    if reader.is_encrypted:
+        try:
+            reader.decrypt("")  # try an empty password first
+        except Exception:
+            raise ValueError("This PDF is password-protected and cannot be read.")
+
+    pages_text = []
+    for page in reader.pages:
+        try:
+            text = page.extract_text() or ""
+        except Exception:
+            text = ""
+        if text.strip():
+            pages_text.append(text)
+
+    full_text = "\n".join(pages_text).strip()
+    if not full_text:
+        raise ValueError(
+            "No extractable text found in this PDF. It may be a scanned/image-only "
+            "document without a text layer — try exporting a .txt or .vtt transcript instead."
+        )
+    return full_text
 
 
 # ── VTT parser ───────────────────────────────────────────────────────────────

@@ -229,7 +229,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['txt', 'vtt'],
+      allowedExtensions: ['txt', 'vtt', 'pdf'],
     );
 
     if (result == null || result.files.isEmpty) return;
@@ -240,8 +240,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
     }
 
     final ext = path.split('.').last.toLowerCase();
-    if (ext != 'txt' && ext != 'vtt') {
-      setState(() => _errorMessage = 'Only .txt and .vtt files are supported.');
+    if (ext != 'txt' && ext != 'vtt' && ext != 'pdf') {
+      setState(() => _errorMessage = 'Only .txt, .vtt, and .pdf files are supported.');
       return;
     }
 
@@ -298,7 +298,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['txt', 'vtt'],
+      allowedExtensions: ['txt', 'vtt', 'pdf'],
       allowMultiple: true,
     );
 
@@ -309,12 +309,12 @@ class _SessionsScreenState extends State<SessionsScreen> {
         .whereType<String>()
         .where((p) {
           final ext = p.split('.').last.toLowerCase();
-          return ext == 'txt' || ext == 'vtt';
+          return ext == 'txt' || ext == 'vtt' || ext == 'pdf';
         })
         .toList();
 
     if (paths.isEmpty) {
-      setState(() => _errorMessage = 'No valid .txt or .vtt files selected.');
+      setState(() => _errorMessage = 'No valid .txt, .vtt, or .pdf files selected.');
       return;
     }
 
@@ -941,7 +941,7 @@ class _UploadSheet extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         if (!parent._isUploading)
-                          Text('.txt  ·  .vtt',
+                          Text('.txt  ·  .vtt  ·  .pdf',
                               style: TextStyle(
                                   color: t.textMuted,
                                   fontSize: 12,

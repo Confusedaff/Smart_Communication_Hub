@@ -100,7 +100,7 @@ Smart_Communication_Hub/
 │   ├── main.py                 — App entry point, all route definitions
 │   ├── extractor.py            — NLP + LLM extraction logic
 │   ├── chatbot.py              — RAG-based Q&A over transcripts
-│   ├── parser.py               — .txt / .vtt transcript parser
+│   ├── parser.py               — .txt / .vtt / .pdf transcript parser
 │   ├── sessions.py             — Session management + SQLite persistence
 │   ├── export.py               — CSV + PDF export
 │   └── requirements.txt
@@ -230,7 +230,7 @@ The backend is the single source of truth for all transcript processing. It hand
 ### Features
 
 - **Accounts** — email + password sign-up/login (bcrypt-hashed passwords, JWT bearer tokens); every session, chat, and action-item is private to the account that created it
-- **Upload** — accepts `.txt` and `.vtt` transcript files, parses speaker segments
+- **Upload** — accepts `.txt`, `.vtt`, and `.pdf` transcript files, parses speaker segments
 - **Extraction** — two engines selectable per-request:
   - `nlp` — spaCy-based rule extraction (fast, fully offline)
   - `llm` — Groq (cloud) or Ollama (local) LLM extraction (higher quality)
@@ -412,7 +412,7 @@ All clients use these endpoints. Full interactive docs at `http://localhost:8000
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/health` | Backend health check |
-| `POST` | `/upload` | Upload `.txt` / `.vtt` transcript → returns `session_id` |
+| `POST` | `/upload` | Upload `.txt` / `.vtt` / `.pdf` transcript → returns `session_id` |
 | `GET` | `/sessions` | List all active sessions |
 | `GET` | `/sessions/{id}` | Get session metadata |
 | `DELETE` | `/sessions/{id}` | Delete a session |

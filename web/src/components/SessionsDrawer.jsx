@@ -62,7 +62,7 @@ export default function SessionsDrawer({
             <div className="drawer-empty">
               <span className="drawer-empty-icon">📭</span>
               <p>No transcripts yet.</p>
-              <p className="drawer-empty-sub">Upload a .txt or .vtt file to get started.</p>
+              <p className="drawer-empty-sub">Upload a .txt, .vtt, or .pdf file to get started.</p>
             </div>
           ) : (
             <ul className="drawer-list">
