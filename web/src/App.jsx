@@ -39,6 +39,21 @@ export default function App() {
       .finally(() => setAuthChecked(true));
   }, []);
 
+  // ── Keep-alive ping ──────────────────────────────────────────────────
+  // Render's free tier spins the backend down after ~15 min idle, and the
+  // next request then eats a ~30-60s cold start. Pinging /health every 5
+  // minutes while the tab is open keeps it warm during an active session.
+  // This doesn't need auth, so it runs regardless of sign-in state — it
+  // starts as soon as the app mounts.
+  useEffect(() => {
+    const PING_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+    const ping = () => { api.health().catch(() => { /* backend may be asleep/unreachable — ignore */ }); };
+
+    ping(); // warm it immediately on load too
+    const id = setInterval(ping, PING_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
+
   // Load persisted sessions from backend on mount
   const refreshSessions = useCallback(async () => {
     try {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -65,10 +66,35 @@ class _AuthGateState extends State<_AuthGate> {
   bool _checkingSession = true;
   bool _isLoggedIn = false;
 
+  // Render's free tier spins the backend down after ~15 min idle, and the
+  // next request then eats a ~30-60s cold start. Pinging /health every 5
+  // minutes while the app is running keeps it warm. /health needs no auth,
+  // so this runs for the app's whole lifetime — logged in or not — started
+  // once here since _AuthGate is the one widget mounted the entire time.
+  static const _pingInterval = Duration(minutes: 5);
+  Timer? _keepAliveTimer;
+
   @override
   void initState() {
     super.initState();
     _restore();
+    _pingBackend(); // warm it immediately on launch too
+    _keepAliveTimer = Timer.periodic(_pingInterval, (_) => _pingBackend());
+  }
+
+  @override
+  void dispose() {
+    _keepAliveTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _pingBackend() async {
+    try {
+      await ApiService.getHealth();
+    } catch (_) {
+      // Backend may be asleep, unreachable, or the URL not yet configured —
+      // safe to ignore; the next scheduled ping will retry.
+    }
   }
 
   Future<void> _restore() async {

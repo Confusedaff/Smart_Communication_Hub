@@ -9,6 +9,10 @@ login/account system.
 
 ## 0. What changed in this update
 
+- **Keep-alive ping (Web + Flutter/Android)**: both apps now ping the
+  backend's `/health` endpoint every 5 minutes while running, to reduce how
+  often you hit Render's free-tier cold start. See the note at the end of
+  this section for what this does and doesn't cover.
 - **C++/Qt desktop app**: added a sign-in / create-account screen and an
   account settings panel (profile, sign out, backend URL manager). Every
   API call — including file upload and CSV/PDF export — now sends the
@@ -28,6 +32,26 @@ login/account system.
   Flutter app already had working login/register/settings screens I used as
   the reference for the API contract. The extension has no auth UI; see the
   note in its section below.
+
+### About the keep-alive ping — what it does and doesn't do
+- **Web**: `App.jsx` pings `/health` once on load, then every 5 minutes for
+  as long as the browser tab stays open. Closing the tab stops it — this
+  isn't a background service, it only runs while someone has the page open.
+- **Flutter/Android**: `main.dart`'s `_AuthGate` (the one widget alive for
+  the whole app session) does the same — pings on launch, then every 5
+  minutes while the app process is running, logged in or not. On Android,
+  the OS can still suspend or kill a backgrounded app after a while, which
+  stops the timer; this isn't a persistent background service (that would
+  need `WorkManager`/a foreground service, which is a bigger addition — say
+  the word if you want that instead of the in-app timer).
+- **What this buys you**: while you or a teammate has the app open and
+  actively using it, the backend won't cold-start mid-session as often.
+- **What it doesn't buy you**: a truly always-warm backend with nobody
+  using either app. Render's free tier will still spin down after ~15 min
+  of zero traffic from any source. For that, you'd want an external
+  scheduled pinger (e.g. a free cron service like cron-job.org hitting
+  `/health` every 10 minutes, or upgrading off the free plan) — happy to
+  set that up too if useful.
 
 ---
 
