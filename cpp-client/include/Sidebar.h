@@ -42,6 +42,7 @@ public:
     void setExtractionCount(int count);
     void setExtractorEngine(const QString& engine);
     void setLLMBackend(const QString& backend);
+    void setAccountLabel(const QString& emailOrName);
 
 signals:
     void tabChanged(const QString& tab);
@@ -51,6 +52,7 @@ signals:
     void engineChanged(const QString& engine);
     void exportCsvClicked();
     void exportPdfClicked();
+    void accountClicked();
 
 private:
     void setupUi();
@@ -74,6 +76,8 @@ private:
     QPushButton* m_btnPDF;
     QPushButton* m_btnNewTranscript;
     QLabel*      m_timingLabel;
+    QPushButton* m_btnAccount = nullptr;
+    QLabel*      m_accountLabel = nullptr;
 
     QString      m_activeTab;
     QList<SidebarSessionItem*> m_sessionItems;

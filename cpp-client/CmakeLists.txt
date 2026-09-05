@@ -35,6 +35,8 @@ set(SOURCES
     src/TagBadge.cpp
     src/StatCard.cpp
     src/TimingWidget.cpp
+    src/AuthDialog.cpp
+    src/AccountPanel.cpp
 )
 
 set(HEADERS
@@ -55,6 +57,8 @@ set(HEADERS
     include/TimingWidget.h
     include/AppState.h
     include/FlowLayout.h
+    include/AuthDialog.h
+    include/AccountPanel.h
 )
 
 # --- App Icon Setup ---

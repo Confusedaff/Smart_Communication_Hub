@@ -6,6 +6,7 @@ import TranscriptPanel from "./TranscriptPanel";
 import AnalyticsPanel from "./AnalyticsPanel";
 import ActionItemsPanel from "./ActionItemsPanel";
 import LLMTimingBadge from "./LLMTimingBadge";
+import AccountMenu from "./AccountMenu";
 
 const TABS = [
   { id: "extract",    label: "Extraction",   icon: "⚡" },
@@ -15,7 +16,7 @@ const TABS = [
   { id: "transcript", label: "Transcript",   icon: "📄" },
 ];
 
-export default function DashboardView({ session, onNewUpload, onOpenHistory, sessionCount, allSessions = [] }) {
+export default function DashboardView({ session, onNewUpload, onOpenHistory, sessionCount, allSessions = [], user, onLogout }) {
   const [tab,          setTab]          = useState("extract");
   const [extraction,   setExtraction]   = useState(null);
   const [extracting,   setExtracting]   = useState(false);
@@ -136,8 +137,18 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
         {extraction && (
           <div className="export-section">
             <label className="engine-label">Export</label>
-            <a className="export-btn" href={api.exportCsvUrl(sessionId)} download>⬇ CSV</a>
-            <a className="export-btn" href={api.exportPdfUrl(sessionId)} download>⬇ PDF Report</a>
+            <button
+              className="export-btn"
+              onClick={() => api.exportCsv(sessionId, `${session.filename || "export"}.csv`).catch((e) => alert(e.message))}
+            >
+              ⬇ CSV
+            </button>
+            <button
+              className="export-btn"
+              onClick={() => api.exportPdf(sessionId, `${session.filename || "report"}.pdf`).catch((e) => alert(e.message))}
+            >
+              ⬇ PDF Report
+            </button>
           </div>
         )}
 
@@ -183,6 +194,8 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
                 <LLMTimingBadge task={timingTask} />
               </div>
             </details>
+
+            <AccountMenu user={user} onLogout={onLogout} />
           </div>
         </div>
 

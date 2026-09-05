@@ -16,6 +16,8 @@
 #include <QStandardPaths>
 #include <QCloseEvent>
 #include <QResizeEvent>
+#include <QSettings>
+#include <QTimer>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("Meeting Intelligence Hub");
@@ -29,8 +31,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         move(sg.center() - rect().center());
     }
 
-    m_api = new ApiClient("http://localhost:8000", this);
-    m_currentBackendUrl = "http://localhost:8000";
+    QSettings settings("MIH", "MeetingIntelligenceHub");
+    m_currentBackendUrl = settings.value("backendUrl", "http://localhost:8000").toString();
+
+    m_api = new ApiClient(m_currentBackendUrl, this);
 
     m_timingTimer = new QTimer(this);
     m_timingTimer->setInterval(30000); // poll every 30s
@@ -48,10 +52,24 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         m_uploadPage->setOnline(ok, m_currentBackendUrl);
     });
 
+    // Any authenticated request that comes back 401 (expired/invalid token)
+    // drops the user back to the sign-in screen.
+    connect(m_api, &ApiClient::unauthorized, this, [this]() {
+        if (!m_authenticated) return; // already signed out; avoid loops
+        m_authenticated = false;
+        QSettings s("MIH", "MeetingIntelligenceHub");
+        s.remove("authToken");
+        m_api->setAuthToken(QString());
+        QMessageBox::information(this, "Session expired",
+            "Your session has expired. Please sign in again.");
+        requireAuth();
+    });
+
     setStyleSheet(MIHStyle::globalStyleSheet());
     setupUi();
     setupConnections();
-    showUploadPage();
+
+    restoreSession();
 }
 
 void MainWindow::setupUi() {
@@ -162,6 +180,8 @@ void MainWindow::setupConnections() {
     connect(m_uploadPage, &UploadWidget::backendUrlChanged, this, [this](const QString& newUrl) {
         m_currentBackendUrl = newUrl;
         m_api->setBaseUrl(newUrl);
+        QSettings settings("MIH", "MeetingIntelligenceHub");
+        settings.setValue("backendUrl", newUrl);
         // Immediately probe the new address
         m_api->checkHealth();
     });
@@ -317,6 +337,109 @@ void MainWindow::setupConnections() {
         auto* sess = m_state.activeSession();
         if (sess) m_api->clearChatHistory(sess->id);
     });
+
+    // ── Account ──────────────────────────────────────────────────────────────
+    connect(m_sidebar, &Sidebar::accountClicked, this, &MainWindow::openAccountPanel);
+}
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
+void MainWindow::restoreSession() {
+    QSettings settings("MIH", "MeetingIntelligenceHub");
+    QString token = settings.value("authToken").toString();
+
+    if (token.isEmpty()) {
+        requireAuth();
+        return;
+    }
+
+    // Optimistically trust the saved token, then verify it in the background.
+    m_api->setAuthToken(token);
+    m_authenticated = true;
+
+    // If /auth/me fails (expired/invalid token), the ApiClient::unauthorized
+    // handler wired up in the constructor will bounce us back to sign-in.
+    connect(m_api, &ApiClient::currentUserDone, this, [this](const QJsonObject& user) {
+        disconnect(m_api, &ApiClient::currentUserDone, this, nullptr);
+        disconnect(m_api, &ApiClient::currentUserError, this, nullptr);
+        m_currentUser = user;
+        m_sidebar->setAccountLabel(user.value("email").toString());
+        showUploadPage();
+    });
+    connect(m_api, &ApiClient::currentUserError, this, [this](const QString&) {
+        disconnect(m_api, &ApiClient::currentUserDone, this, nullptr);
+        disconnect(m_api, &ApiClient::currentUserError, this, nullptr);
+        // unauthorized() will already have fired for a 401 and shown the
+        // dialog; for other errors (e.g. offline), just show sign-in too.
+        if (m_authenticated) {
+            m_authenticated = false;
+            requireAuth();
+        }
+    });
+    m_api->fetchCurrentUser();
+}
+
+void MainWindow::requireAuth() {
+    hide();
+    AuthDialog dlg(m_api, nullptr);
+    int result = dlg.exec();
+    if (result != QDialog::Accepted) {
+        // User closed the sign-in window without authenticating. quit()
+        // only posts a quit event, which does nothing until the event loop
+        // is running — schedule it for the next tick so it works whether
+        // this happens during startup (inside the ctor) or later at runtime.
+        QTimer::singleShot(0, qApp, &QApplication::quit);
+        return;
+    }
+    onAuthenticated(dlg.accessToken(), dlg.user());
+    show();
+}
+
+void MainWindow::onAuthenticated(const QString& token, const QJsonObject& user) {
+    m_authenticated = true;
+    m_currentUser = user;
+    m_api->setAuthToken(token);
+
+    QSettings settings("MIH", "MeetingIntelligenceHub");
+    settings.setValue("authToken", token);
+
+    m_sidebar->setAccountLabel(user.value("email").toString());
+    showUploadPage();
+}
+
+void MainWindow::openAccountPanel() {
+    AccountPanel panel(m_currentUser, m_currentBackendUrl, this);
+    connect(&panel, &AccountPanel::backendUrlChanged, this, [this](const QString& newUrl) {
+        m_currentBackendUrl = newUrl;
+        m_api->setBaseUrl(newUrl);
+        QSettings settings("MIH", "MeetingIntelligenceHub");
+        settings.setValue("backendUrl", newUrl);
+        m_api->checkHealth();
+        if (m_stack->currentIndex() == 0)
+            m_uploadPage->setConnecting(newUrl);
+    });
+    connect(&panel, &AccountPanel::logoutRequested, this, &MainWindow::performLogout);
+    panel.exec();
+}
+
+void MainWindow::performLogout() {
+    QSettings settings("MIH", "MeetingIntelligenceHub");
+    settings.remove("authToken");
+    m_api->setAuthToken(QString());
+    m_authenticated = false;
+    m_currentUser = QJsonObject();
+
+    // Drop all in-memory session state — it belongs to the account that just
+    // signed out and must not leak into the next session on this machine.
+    m_state = AppState();
+    m_sidebar->setSessions({}, -1);
+    m_chatPanel->clearMessages();
+    m_extractionPanel->clear();
+    m_transcriptPanel->clear();
+    m_actionItemsPanel->clear();
+    m_analyticsPanel->clear();
+
+    requireAuth();
 }
 
 void MainWindow::showUploadPage() {

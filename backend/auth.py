@@ -143,20 +143,36 @@ async def authenticate_user(email: str, password: str) -> dict:
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    token: Optional[str] = None,
 ) -> dict:
     """
-    Verifies the bearer JWT and returns the current user record
+    Verifies the caller's JWT and returns the current user record
     ({id, email, display_name, created_at}). Raises 401 if missing/invalid.
+
+    Accepts the token two ways:
+      1. `Authorization: Bearer <token>` header — used by every normal
+         fetch()-based request (the browser and the desktop client both
+         send this).
+      2. `?token=<token>` query parameter — a fallback for EventSource-based
+         SSE streaming, since EventSource cannot set custom headers. Only
+         the streaming chat route exposes this; prefer the header everywhere
+         else.
 
     Use as: `user = Depends(get_current_user)` on any route that needs to
     know who's calling, then scope all data lookups to user["id"].
     """
-    if credentials is None or not credentials.credentials:
+    raw_token = None
+    if credentials is not None and credentials.credentials:
+        raw_token = credentials.credentials
+    elif token:
+        raw_token = token
+
+    if not raw_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated. Include 'Authorization: Bearer <token>'.",
         )
-    payload = decode_access_token(credentials.credentials)
+    payload = decode_access_token(raw_token)
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token payload.")

@@ -1,8 +1,35 @@
 const BASE_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) || "http://localhost:8000";
 
+const TOKEN_KEY = "mih_auth_token";
+
+let authToken = null;
+try { authToken = localStorage.getItem(TOKEN_KEY) || null; } catch (_) { /* storage unavailable */ }
+
+// Notified whenever a request comes back 401 so the app can drop to the
+// login screen (e.g. expired/invalid token).
+let onUnauthorized = () => {};
+
+function setAuthToken(token) {
+  authToken = token || null;
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch (_) { /* storage unavailable */ }
+}
+
+function getAuthToken() {
+  return authToken;
+}
+
 async function request(method, path, options = {}) {
   const url = `${BASE_URL}${path}`;
-  const res = await fetch(url, { method, ...options });
+  const headers = { ...(options.headers || {}) };
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+  const res = await fetch(url, { method, ...options, headers });
+  if (res.status === 401) {
+    setAuthToken(null);
+    onUnauthorized();
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || "Request failed");
@@ -10,7 +37,42 @@ async function request(method, path, options = {}) {
   return res;
 }
 
+// Fetches a file with auth headers attached and triggers a browser download,
+// since plain <a href> links can't carry an Authorization header.
+async function downloadFile(path, filename) {
+  const res = await request("GET", path);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
+  setAuthToken,
+  getAuthToken,
+  isAuthenticated: () => !!authToken,
+  setOnUnauthorized: (fn) => { onUnauthorized = fn; },
+
+  // ── Auth ──────────────────────────────────────────────────────────────
+  register: (email, password, displayName) =>
+    request("POST", "/auth/register", {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, display_name: displayName || undefined }),
+    }).then((r) => r.json()),
+
+  login: (email, password) =>
+    request("POST", "/auth/login", {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    }).then((r) => r.json()),
+
+  me: () => request("GET", "/auth/me").then((r) => r.json()),
+
   health: () => request("GET", "/health").then((r) => r.json()),
 
   upload: (file) => {
@@ -40,9 +102,13 @@ export const api = {
       body: JSON.stringify({ question }),
     }).then((r) => r.json()),
 
-  // Streaming chat — returns an EventSource
+  // Streaming chat — returns an EventSource. EventSource can't set custom
+  // headers, so the JWT is passed as a query param (the backend's
+  // get_current_user accepts either).
   chatStream: (sessionId, question) => {
-    const url = `${BASE_URL}/sessions/${sessionId}/chat/stream?question=${encodeURIComponent(question)}`;
+    const params = new URLSearchParams({ question });
+    if (authToken) params.set("token", authToken);
+    const url = `${BASE_URL}/sessions/${sessionId}/chat/stream?${params.toString()}`;
     return new EventSource(url);
   },
 
@@ -92,8 +158,10 @@ export const api = {
   deleteSession: (sessionId) =>
     request("DELETE", `/sessions/${sessionId}`).then((r) => r.json()),
 
-  exportCsvUrl: (sessionId) => `${BASE_URL}/sessions/${sessionId}/export/csv`,
-  exportPdfUrl: (sessionId) => `${BASE_URL}/sessions/${sessionId}/export/pdf`,
+  exportCsv: (sessionId, filename = "export.csv") =>
+    downloadFile(`/sessions/${sessionId}/export/csv`, filename),
+  exportPdf: (sessionId, filename = "report.pdf") =>
+    downloadFile(`/sessions/${sessionId}/export/pdf`, filename),
 
   // Speaker analytics
   analytics: (sessionId) =>

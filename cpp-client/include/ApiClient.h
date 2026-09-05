@@ -15,6 +15,15 @@ public:
     void setBaseUrl(const QString& url);
     QString baseUrl() const { return m_baseUrl; }
 
+    // ── Auth ──────────────────────────────────────────────────────────────────
+    void setAuthToken(const QString& token);   // empty string clears it
+    QString authToken() const { return m_authToken; }
+    bool isAuthenticated() const { return !m_authToken.isEmpty(); }
+
+    void login(const QString& email, const QString& password);
+    void registerAccount(const QString& email, const QString& password, const QString& displayName);
+    void fetchCurrentUser();
+
     // ── Core API calls ────────────────────────────────────────────────────────
     void checkHealth();
     void uploadTranscript(const QString& filePath);
@@ -41,6 +50,17 @@ public:
     void downloadPdf(const QString& sessionId, const QString& savePath);
 
 signals:
+    // Auth
+    void loginDone(const QString& token, const QJsonObject& user);
+    void loginError(const QString& error);
+    void registerDone(const QString& token, const QJsonObject& user);
+    void registerError(const QString& error);
+    void currentUserDone(const QJsonObject& user);
+    void currentUserError(const QString& error);
+    // Fired whenever any authenticated request comes back 401 (e.g. expired
+    // token) so the UI can drop back to the sign-in screen.
+    void unauthorized();
+
     // Core
     void healthCheckDone(bool ok, const QJsonObject& info);
     void uploadDone(const QString& sessionId, const QJsonObject& data);
@@ -70,9 +90,13 @@ signals:
 private:
     QNetworkAccessManager* m_nam;
     QString m_baseUrl;
+    QString m_authToken;
 
     QNetworkRequest makeRequest(const QString& path);
     void handleReply(QNetworkReply* reply,
                      std::function<void(const QJsonObject&)> onSuccess,
+                     std::function<void(const QString&)> onError);
+    void handleAuthReply(QNetworkReply* reply,
+                     std::function<void(const QString& token, const QJsonObject& user)> onSuccess,
                      std::function<void(const QString&)> onError);
 };

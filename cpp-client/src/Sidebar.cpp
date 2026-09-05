@@ -117,6 +117,20 @@ void Sidebar::setupUi() {
     logoRow->addWidget(logoBox);
     logoRow->addSpacing(10);
     logoRow->addStretch();
+
+    m_btnAccount = new QPushButton(logoBar);
+    m_btnAccount->setFixedSize(30, 30);
+    m_btnAccount->setCursor(Qt::PointingHandCursor);
+    m_btnAccount->setToolTip("Account & settings");
+    m_btnAccount->setText("👤");
+    m_btnAccount->setStyleSheet(
+        "QPushButton { background:#21262d; color:#8b949e; border:1px solid #30363d;"
+        "border-radius:15px; font-size:13px; }"
+        "QPushButton:hover { background:#2d333b; color:#e6edf3; border-color:#8b949e; }"
+        "QPushButton:pressed { background:#161b22; }"
+    );
+    connect(m_btnAccount, &QPushButton::clicked, this, &Sidebar::accountClicked);
+    logoRow->addWidget(m_btnAccount);
     mainLayout->addWidget(logoBar);
 
     // ── Session scroll area ─────────────────────────────────────────────────
@@ -372,6 +386,11 @@ void Sidebar::updateEngineButtons(const QString& engine) {
 void Sidebar::setLLMBackend(const QString& backend) {
     QString icon = (backend == "groq") ? "⚡" : "🖥";
     m_timingLabel->setText(QString("+ ⏱ %1 Response times").arg(icon));
+}
+
+void Sidebar::setAccountLabel(const QString& emailOrName) {
+    if (m_btnAccount)
+        m_btnAccount->setToolTip(emailOrName.isEmpty() ? "Account & settings" : "Account: " + emailOrName);
 }
 
 void Sidebar::setSessions(const QList<Session>& sessions, int activeIndex) {

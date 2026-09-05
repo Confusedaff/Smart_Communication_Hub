@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback } from "react";
 import { api } from "../services/api";
+import AccountMenu from "./AccountMenu";
 
-export default function UploadView({ onSuccess, sessionCount, onOpenHistory }) {
+export default function UploadView({ onSuccess, sessionCount, onOpenHistory, user, onLogout }) {
   const [dragging, setDragging] = useState(false);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState(null);
@@ -47,6 +48,10 @@ export default function UploadView({ onSuccess, sessionCount, onOpenHistory }) {
           🗂 {sessionCount} previous transcript{sessionCount !== 1 ? "s" : ""}
         </button>
       )}
+
+      <div className="upload-account-corner">
+        <AccountMenu user={user} onLogout={onLogout} />
+      </div>
 
       <header className="upload-header">
         <div className="logo-mark">MIH</div>

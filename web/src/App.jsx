@@ -2,10 +2,15 @@ import { useState, useEffect, useCallback } from "react";
 import UploadView from "./components/UploadView";
 import DashboardView from "./components/DashboardView";
 import SessionsDrawer from "./components/SessionsDrawer";
+import LoginView from "./components/LoginView";
 import { api } from "./services/api";
 import "./index.css";
 
 export default function App() {
+  // Auth: null while we haven't checked yet, false = signed out, object = signed in
+  const [user, setUser] = useState(undefined); // undefined = "checking", null = signed out
+  const [authChecked, setAuthChecked] = useState(false);
+
   // Active session object { session_id, filename, segment_count, speakers, ... }
   const [session, setSession] = useState(null);
   const [view, setView] = useState("upload"); // "upload" | "dashboard"
@@ -13,15 +18,48 @@ export default function App() {
   const [allSessions, setAllSessions] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  // On mount: if a token is stored, verify it against /auth/me before
+  // showing any app content. Also wire up the 401 handler once.
+  useEffect(() => {
+    api.setOnUnauthorized(() => {
+      setUser(null);
+      setSession(null);
+      setAllSessions([]);
+      setView("upload");
+    });
+
+    if (!api.isAuthenticated()) {
+      setUser(null);
+      setAuthChecked(true);
+      return;
+    }
+    api.me()
+      .then((u) => setUser(u))
+      .catch(() => setUser(null))
+      .finally(() => setAuthChecked(true));
+  }, []);
+
   // Load persisted sessions from backend on mount
   const refreshSessions = useCallback(async () => {
     try {
       const data = await api.sessions();
       setAllSessions(data.sessions || []);
-    } catch (_) { /* backend may not be up yet */ }
+    } catch (_) { /* backend may not be up yet, or not authenticated */ }
   }, []);
 
-  useEffect(() => { refreshSessions(); }, [refreshSessions]);
+  useEffect(() => { if (user) refreshSessions(); }, [user, refreshSessions]);
+
+  const handleAuthenticated = (u) => {
+    setUser(u);
+  };
+
+  const handleLogout = () => {
+    api.setAuthToken(null);
+    setUser(null);
+    setSession(null);
+    setAllSessions([]);
+    setView("upload");
+  };
 
   const handleUploadSuccess = (sessionData) => {
     setSession(sessionData);
@@ -70,31 +108,45 @@ export default function App() {
 
   return (
     <div className="app-root">
-      {/* Sessions history drawer — available everywhere */}
-      <SessionsDrawer
-        open={drawerOpen}
-        sessions={allSessions}
-        activeSessionId={session?.session_id}
-        onSelect={handleSelectSession}
-        onDelete={handleDeleteSession}
-        onClose={() => setDrawerOpen(false)}
-        onNewUpload={() => { setDrawerOpen(false); handleNewUpload(); }}
-      />
-
-      {view === "upload" ? (
-        <UploadView
-          onSuccess={handleUploadSuccess}
-          sessionCount={allSessions.length}
-          onOpenHistory={() => setDrawerOpen(true)}
-        />
+      {!authChecked ? (
+        <div className="auth-loading">
+          <div className="spinner lg" />
+        </div>
+      ) : !user ? (
+        <LoginView onAuthenticated={handleAuthenticated} />
       ) : (
-        <DashboardView
-          session={session}
-          onNewUpload={handleNewUpload}
-          onOpenHistory={() => setDrawerOpen(true)}
-          sessionCount={allSessions.length}
-          allSessions={allSessions}
-        />
+        <>
+          {/* Sessions history drawer — available everywhere */}
+          <SessionsDrawer
+            open={drawerOpen}
+            sessions={allSessions}
+            activeSessionId={session?.session_id}
+            onSelect={handleSelectSession}
+            onDelete={handleDeleteSession}
+            onClose={() => setDrawerOpen(false)}
+            onNewUpload={() => { setDrawerOpen(false); handleNewUpload(); }}
+          />
+
+          {view === "upload" ? (
+            <UploadView
+              onSuccess={handleUploadSuccess}
+              sessionCount={allSessions.length}
+              onOpenHistory={() => setDrawerOpen(true)}
+              user={user}
+              onLogout={handleLogout}
+            />
+          ) : (
+            <DashboardView
+              session={session}
+              onNewUpload={handleNewUpload}
+              onOpenHistory={() => setDrawerOpen(true)}
+              sessionCount={allSessions.length}
+              allSessions={allSessions}
+              user={user}
+              onLogout={handleLogout}
+            />
+          )}
+        </>
       )}
     </div>
   );

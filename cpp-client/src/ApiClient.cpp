@@ -18,9 +18,15 @@ void ApiClient::setBaseUrl(const QString& url) {
     m_baseUrl = url;
 }
 
+void ApiClient::setAuthToken(const QString& token) {
+    m_authToken = token;
+}
+
 QNetworkRequest ApiClient::makeRequest(const QString& path) {
     QNetworkRequest req(QUrl(m_baseUrl + path));
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    if (!m_authToken.isEmpty())
+        req.setRawHeader("Authorization", "Bearer " + m_authToken.toUtf8());
     return req;
 }
 
@@ -29,9 +35,10 @@ void ApiClient::handleReply(
     std::function<void(const QJsonObject&)> onSuccess,
     std::function<void(const QString&)> onError)
 {
-    connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, onSuccess, onError]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
+            int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             QString errMsg = reply->errorString();
             // Try to get body for details
             QByteArray body = reply->readAll();
@@ -39,6 +46,8 @@ void ApiClient::handleReply(
             if (doc.isObject() && doc.object().contains("detail")) {
                 errMsg = doc.object()["detail"].toString();
             }
+            if (status == 401)
+                emit unauthorized();
             onError(errMsg);
             return;
         }
@@ -50,6 +59,72 @@ void ApiClient::handleReply(
             onError("Invalid JSON response");
         }
     });
+}
+
+void ApiClient::handleAuthReply(
+    QNetworkReply* reply,
+    std::function<void(const QString& token, const QJsonObject& user)> onSuccess,
+    std::function<void(const QString&)> onError)
+{
+    connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
+        reply->deleteLater();
+        QByteArray data = reply->readAll();
+        QJsonDocument doc = QJsonDocument::fromJson(data);
+
+        if (reply->error() != QNetworkReply::NoError) {
+            QString errMsg = reply->errorString();
+            if (doc.isObject() && doc.object().contains("detail"))
+                errMsg = doc.object()["detail"].toString();
+            onError(errMsg);
+            return;
+        }
+        if (!doc.isObject() || !doc.object().contains("access_token")) {
+            onError("Unexpected response from server.");
+            return;
+        }
+        QJsonObject obj = doc.object();
+        onSuccess(obj["access_token"].toString(), obj["user"].toObject());
+    });
+}
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
+void ApiClient::login(const QString& email, const QString& password) {
+    QJsonObject body;
+    body["email"] = email;
+    body["password"] = password;
+    QByteArray jsonData = QJsonDocument(body).toJson();
+
+    QNetworkRequest req = makeRequest("/auth/login");
+    auto* reply = m_nam->post(req, jsonData);
+    handleAuthReply(reply,
+        [this](const QString& token, const QJsonObject& user) { emit loginDone(token, user); },
+        [this](const QString& err) { emit loginError(err); }
+    );
+}
+
+void ApiClient::registerAccount(const QString& email, const QString& password, const QString& displayName) {
+    QJsonObject body;
+    body["email"] = email;
+    body["password"] = password;
+    if (!displayName.trimmed().isEmpty())
+        body["display_name"] = displayName.trimmed();
+    QByteArray jsonData = QJsonDocument(body).toJson();
+
+    QNetworkRequest req = makeRequest("/auth/register");
+    auto* reply = m_nam->post(req, jsonData);
+    handleAuthReply(reply,
+        [this](const QString& token, const QJsonObject& user) { emit registerDone(token, user); },
+        [this](const QString& err) { emit registerError(err); }
+    );
+}
+
+void ApiClient::fetchCurrentUser() {
+    auto* reply = m_nam->get(makeRequest("/auth/me"));
+    handleReply(reply,
+        [this](const QJsonObject& obj) { emit currentUserDone(obj); },
+        [this](const QString& err)     { emit currentUserError(err); }
+    );
 }
 
 void ApiClient::checkHealth() {
@@ -82,6 +157,8 @@ void ApiClient::uploadTranscript(const QString& filePath) {
     multiPart->append(filePart);
 
     QNetworkRequest req(QUrl(m_baseUrl + "/upload"));
+    if (!m_authToken.isEmpty())
+        req.setRawHeader("Authorization", "Bearer " + m_authToken.toUtf8());
     auto* reply = m_nam->post(req, multiPart);
     multiPart->setParent(reply);
 
@@ -91,9 +168,12 @@ void ApiClient::uploadTranscript(const QString& filePath) {
         QJsonDocument doc = QJsonDocument::fromJson(data);
 
         if (reply->error() != QNetworkReply::NoError || !doc.isObject()) {
+            int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             QString errMsg = reply->errorString();
             if (doc.isObject() && doc.object().contains("detail"))
                 errMsg = doc.object()["detail"].toString();
+            if (status == 401)
+                emit unauthorized();
             emit uploadError(errMsg);
             return;
         }
@@ -232,7 +312,7 @@ QUrl ApiClient::pdfExportUrl(const QString& sessionId) const {
 }
 
 void ApiClient::downloadCsv(const QString& sessionId, const QString& savePath) {
-    auto* reply = m_nam->get(QNetworkRequest(csvExportUrl(sessionId)));
+    auto* reply = m_nam->get(makeRequest("/sessions/" + sessionId + "/export/csv"));
     connect(reply, &QNetworkReply::finished, this, [this, reply, savePath]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
@@ -249,7 +329,7 @@ void ApiClient::downloadCsv(const QString& sessionId, const QString& savePath) {
 }
 
 void ApiClient::downloadPdf(const QString& sessionId, const QString& savePath) {
-    auto* reply = m_nam->get(QNetworkRequest(pdfExportUrl(sessionId)));
+    auto* reply = m_nam->get(makeRequest("/sessions/" + sessionId + "/export/pdf"));
     connect(reply, &QNetworkReply::finished, this, [this, reply, savePath]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {

@@ -58,7 +58,9 @@ int main(int argc, char* argv[]) {
     app.setPalette(darkPalette);
 
     MainWindow window;
-    window.show();
+    if (window.isAuthenticated()) {
+        window.show();
+    }
 
     return app.exec();
 }

@@ -12,11 +12,14 @@
 #include "ChatPanel.h"
 #include "TranscriptPanel.h"
 #include "TimingWidget.h"
+#include "AuthDialog.h"
+#include "AccountPanel.h"
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     explicit MainWindow(QWidget* parent = nullptr);
+    bool isAuthenticated() const { return m_authenticated; }
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -31,6 +34,13 @@ private:
     void switchTab(const QString& tab);
     void loadSession(const QString& sessionId);
     void fetchTranscript(const QString& sessionId);
+
+    // ── Auth ────────────────────────────────────────────────────────────────
+    void requireAuth();               // shows AuthDialog modally until success
+    void restoreSession();            // tries to reuse a saved token on startup
+    void onAuthenticated(const QString& token, const QJsonObject& user);
+    void openAccountPanel();
+    void performLogout();
 
     void onUploadDone(const QString& sessionId, const QJsonObject& data);
     void onExtractDone(const QJsonObject& data);
@@ -47,6 +57,10 @@ private:
     ApiClient*   m_api           = nullptr;
     AppState     m_state;
     QString      m_currentBackendUrl;
+
+    // ── Auth ────────────────────────────────────────────────────────────────
+    QJsonObject  m_currentUser;
+    bool         m_authenticated = false;
 
     // ── Timers ──────────────────────────────────────────────────────────────
     QTimer* m_timingTimer = nullptr;
