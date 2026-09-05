@@ -1,0 +1,5 @@
+C:/Me/Projects/Communication_Hub/build/CMakeFiles/MeetingIntelligenceHub.dir
+C:/Me/Projects/Communication_Hub/build/CMakeFiles/edit_cache.dir
+C:/Me/Projects/Communication_Hub/build/CMakeFiles/rebuild_cache.dir
+C:/Me/Projects/Communication_Hub/build/CMakeFiles/MeetingIntelligenceHub_autogen_timestamp_deps.dir
+C:/Me/Projects/Communication_Hub/build/CMakeFiles/MeetingIntelligenceHub_autogen.dir

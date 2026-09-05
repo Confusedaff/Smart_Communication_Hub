@@ -37,6 +37,11 @@ class SessionsScreen extends StatefulWidget {
   final VoidCallback onOpenSettings;
   final VoidCallback? onOpenMultiChat;
 
+  /// Called if any request comes back 401 (expired/invalid token) — routes
+  /// the user back to the login screen instead of leaving them looking at a
+  /// stuck or empty session list with no explanation.
+  final VoidCallback? onAuthExpired;
+
   const SessionsScreen({
     super.key,
     required this.sessions,
@@ -46,6 +51,7 @@ class SessionsScreen extends StatefulWidget {
     required this.onSessionsRestored,
     required this.onOpenSettings,
     this.onOpenMultiChat,
+    this.onAuthExpired,
   });
 
   @override
@@ -203,8 +209,13 @@ class _SessionsScreenState extends State<SessionsScreen> {
       if (mounted && restored.isNotEmpty) {
         widget.onSessionsRestored(restored);
       }
+    } on AuthRequiredException {
+      // Token expired or was invalidated (e.g. server restarted without a
+      // fixed JWT_SECRET) — send the user back to login rather than leaving
+      // them looking at a stuck/empty list.
+      widget.onAuthExpired?.call();
     } catch (_) {
-      // Silently ignore — list stays empty if server unreachable.
+      // Silently ignore other errors — list stays empty if server unreachable.
     }
   }
 
@@ -249,6 +260,15 @@ class _SessionsScreenState extends State<SessionsScreen> {
         });
         Navigator.pop(context); // close bottom sheet
         widget.onUploadSuccess(session);
+      }
+    } on AuthRequiredException {
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _uploadStatus = null;
+        });
+        Navigator.pop(context); // close bottom sheet
+        widget.onAuthExpired?.call();
       }
     } on ApiException catch (e) {
       if (mounted) {
@@ -479,6 +499,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                                 sessionIds: widget.sessions
                                     .map((s) => s.sessionId)
                                     .toList(),
+                                onLoggedOut: widget.onAuthExpired,
                               )),
                     ),
                     child: Container(

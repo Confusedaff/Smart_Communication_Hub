@@ -13,7 +13,11 @@ A FastAPI backend that turns raw meeting transcripts (`.txt` / `.vtt`) into stru
 - [Installation](#installation)
 - [Configuration](#configuration-)
 - [Running the Server](#running-the-server)
+- [Authentication](#authentication)
+- [Database (Postgres)](#database-postgres)
+- [Deploying to Render (free tier)](#deploying-to-render-free-tier)
 - [API Reference](#api-reference)
+  - [Auth](#auth)
   - [Health & Status](#health--status)
   - [Upload](#upload)
   - [Extraction](#extraction)
@@ -38,7 +42,10 @@ A FastAPI backend that turns raw meeting transcripts (`.txt` / `.vtt`) into stru
 ## How It Works
 
 ```
-Upload .txt / .vtt
+POST /auth/register or /auth/login  → returns a JWT
+       │
+       ▼
+Upload .txt / .vtt   (Authorization: Bearer <token> on every request)
        │
        ▼
   parser.py            → parses speakers, timestamps, segments
@@ -47,15 +54,15 @@ Upload .txt / .vtt
   extractor.py         → LLM (Ollama / Groq) extracts decisions + action items + summary
   custom_extractor.py  → OR spaCy NLP (fully offline, no LLM required)
        │
-       ├──▶ sessions.py  → persists extraction + action item statuses in SQLite
+       ├──▶ sessions.py  → persists extraction + action item statuses in Postgres, scoped to user_id
        │
        ├──▶ chatbot.py   → contextual Q&A over the transcript (LLM, speaker-aware)
        │
-       ├──▶ chatbot_multi.py → cross-session TF-IDF RAG chatbot
+       ├──▶ chatbot_multi.py → cross-session TF-IDF RAG chatbot (only the current user's sessions)
        └──▶ export.py    → CSV download or formatted PDF report
 ```
 
-Sessions are stored in **SQLite** (`sessions.db`) and survive server restarts. Action item statuses, speaker analytics, and deadline alerts are computed from this data with no additional LLM calls.
+Every user has their own account (email + password, hashed with bcrypt). Sessions, chat history, and action-item statuses are stored in **Postgres**, each row scoped to the `user_id` that created it — so every account has a private, separated history and survives server restarts (including on Render's free tier, where local disk does not). See [Authentication](#authentication) and [Database (Postgres)](#database-postgres) below.
 
 ---
 
@@ -141,7 +148,10 @@ This installs:
 | `python-multipart` | File upload support |
 | `reportlab` | PDF generation |
 | `spacy` | NLP engine (offline extraction mode) |
-| `aiosqlite` | Async SQLite — session persistence |
+| `asyncpg` | Async Postgres driver — user + session persistence |
+| `pyjwt` | Signs and verifies login tokens |
+| `passlib[bcrypt]` | Password hashing |
+| `email-validator` | Validates emails at registration |
 | `python-dotenv` | Loads `.env` file automatically |
 | `slowapi` | Rate limiting on chat endpoint |
 | `tenacity` | Retry logic for LLM calls |
@@ -161,6 +171,14 @@ Create a file named `.env` in the `backend/` directory:
 ```bash
 # backend/.env
 
+# ── Database (REQUIRED) ─────────────────────────────────────────────────
+# Any Postgres connection string. Free options: Render Postgres, Neon, Supabase.
+DATABASE_URL=postgresql://user:password@host:5432/dbname
+
+# ── Auth (REQUIRED in production) ───────────────────────────────────────
+JWT_SECRET=replace-with-a-long-random-string
+JWT_EXPIRE_MINUTES=10080
+
 # ── LLM Backend ────────────────────────────────────────────────────────
 # Option A: Groq (fast, free cloud API — recommended)
 GROQ_API_KEY=gsk_your_key_here
@@ -178,13 +196,17 @@ EXTRACTOR=llm
 
 # ── Session storage ────────────────────────────────────────────────────
 SESSION_TTL_HOURS=24          # auto-evict sessions idle for this long
-SESSION_DB_PATH=sessions.db   # SQLite file location
+
+# ── CORS ─────────────────────────────────────────────────────────────────
+CORS_ORIGINS=*                # comma-separated allowed origins, or * for all
 
 # ── Optional Groq model override ───────────────────────────────────────
 # GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
 > **Which LLM backend is active?** The backend automatically picks **Groq** if `GROQ_API_KEY` is set, otherwise falls back to **Ollama**. If Groq returns a long `Retry-After` (e.g. daily quota exhausted), it fails fast immediately instead of hanging, and falls back to Ollama.
+
+> **Don't have a Postgres database yet?** The quickest options are [Neon](https://neon.tech) or [Supabase](https://supabase.com) (both free) — sign up, create a project, and copy the connection string they give you into `DATABASE_URL`. If you're deploying to Render, `render.yaml` provisions one automatically (see [Deploying to Render](#deploying-to-render-free-tier)).
 
 ---
 
@@ -194,14 +216,17 @@ All configuration is done through the `.env` file in the `backend/` directory. F
 
 | Variable | Default | Description |
 |---|---|---|
+| `DATABASE_URL` | _(required)_ | Postgres connection string. Users, sessions, and action-item statuses all live here. |
+| `JWT_SECRET` | _(random per-process)_ | Signs login tokens. Set explicitly in production or every restart logs everyone out. |
+| `JWT_EXPIRE_MINUTES` | `10080` (7 days) | How long an access token stays valid. |
 | `GROQ_API_KEY` | _(empty)_ | Your Groq cloud API key. Get one free at [console.groq.com](https://console.groq.com). If set, Groq is used instead of Ollama. |
 | `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model to use. Other options: `llama-3.1-8b-instant`, `mixtral-8x7b-32768`. |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | URL where Ollama is running. Change if Ollama is on a different machine or port. |
 | `OLLAMA_MODEL` | `gemma2:9b` | Local Ollama model to use. Must be pulled first with `ollama pull <model>`. |
 | `OLLAMA_TIMEOUT` | `600` | Seconds before an Ollama request times out. Increase for slower hardware or larger models. |
 | `EXTRACTOR` | `llm` | Default extraction engine. `"llm"` = Groq/Ollama, `"nlp"` = spaCy offline. Can be overridden per-request via `?engine=`. |
-| `SESSION_TTL_HOURS` | `24` | Sessions not accessed within this window are automatically evicted from SQLite. |
-| `SESSION_DB_PATH` | `sessions.db` | Path to the SQLite database file used for session persistence. |
+| `SESSION_TTL_HOURS` | `24` | Sessions not accessed within this window are automatically evicted from Postgres. |
+| `CORS_ORIGINS` | `*` | Comma-separated list of allowed origins, or `*` for all. |
 
 ### Example `.env` configurations
 
@@ -256,9 +281,12 @@ Once running, open:
 
 ## API Reference
 
+**Every endpoint below except `/`, `/health`, `/timing`, `/timing/status`, `/auth/register`, and `/auth/login` requires `Authorization: Bearer <token>`.** Get a token from `/auth/register` or `/auth/login` first.
+
 ### Typical workflow
 
 ```
+0. POST   /auth/register (or /auth/login)               Get a JWT access token
 1. POST   /upload                                       Upload transcript → get session_id
 2. GET    /sessions/{id}/extract                        Run AI extraction (decisions, actions, summary)
 3. GET    /sessions/{id}/analytics                      Speaker analytics dashboard data
@@ -267,11 +295,23 @@ Once running, open:
 6. GET    /sessions/{id}/action-items/alerts            Check for overdue or upcoming deadlines
 7. POST   /sessions/{id}/chat                           Ask questions about the transcript
 8. GET    /sessions/{id}/export/csv                     Download CSV
-9. POST   /chat/multi                                       Ask questions across ALL sessions
+9. POST   /chat/multi                                       Ask questions across all of YOUR sessions
 10. GET   /sessions/{id}/transcript/speaker/{name}         Sentiment click-through — get a speaker's segments
 11. GET   /sessions/{id}/transcript/segment/{index}        Jump to a specific segment with context
-9. GET    /sessions/{id}/export/pdf                     Download PDF report
+12. GET   /sessions/{id}/export/pdf                     Download PDF report
 ```
+
+---
+
+### Auth
+
+See [Authentication](#authentication) above for full request/response examples.
+
+| Endpoint | Auth required? | Description |
+|---|---|---|
+| `POST /auth/register` | No | Create an account, returns a JWT immediately. |
+| `POST /auth/login` | No | Exchange email + password for a JWT. |
+| `GET /auth/me` | Yes | Returns the currently authenticated user. |
 
 ---
 
@@ -283,13 +323,13 @@ Returns API status and active extractor engine.
 ```json
 {
   "message": "Meeting Intelligence Hub API is running",
-  "version": "1.4.0",
+  "version": "2.0.0",
   "extractor_engine": "Ollama LLM"
 }
 ```
 
 #### `GET /health`
-Full health check including LLM backend status and active session count.
+Full health check including LLM backend status. (Public — no auth needed, so uptime monitors and the free-tier "wake up" ping can hit it without a token.)
 
 #### `GET /timing?task=chat`
 Returns expected LLM response time for the current backend. `task` is `"chat"` or `"extract"`.
@@ -391,7 +431,7 @@ Poll the status of an async extraction job. Returns `pending`, `running`, `done`
 
 ### Action Items & Status Tracking
 
-Action item statuses are persisted in SQLite and survive server restarts. Each item can be in one of four states: `pending`, `in_progress`, `done`, `blocked`.
+Action item statuses are persisted in Postgres, scoped per user, and survive server restarts. Each item can be in one of four states: `pending`, `in_progress`, `done`, `blocked`.
 
 #### `GET /sessions/{session_id}/action-items`
 Returns all action items enriched with their current status and any notes. Items default to `pending` if never explicitly updated.
@@ -696,7 +736,7 @@ Returns metadata for a specific session.
 ```
 
 #### `DELETE /sessions/{session_id}`
-Deletes a session and all its data from SQLite.
+Deletes a session and all its data (only if it belongs to the authenticated user).
 
 ---
 
@@ -925,9 +965,10 @@ backend/
 ├── chatbot.py            # Contextual Q&A with citations over the transcript
 ├── chatbot_multi.py      # Cross-session TF-IDF RAG chatbot (no vector DB required)
 ├── ollama_client.py      # Async wrapper for Ollama + Groq with auto-fallback
-├── sessions.py           # SQLite-backed session store with analytics, status tracking, and sentiment helpers
+├── sessions.py           # Postgres-backed, per-user session store with analytics, status tracking, and sentiment helpers
+├── db.py                 # Postgres connection pool + schema creation
+├── auth.py               # Password hashing, JWT issuing/verification, current-user dependency
 ├── export.py             # CSV and PDF export generation
-├── sessions.db           # Auto-created SQLite database (gitignored)
 ├── requirements.txt      # Python dependencies
 └── .env                  # Your local config (not committed to git)
 ```
@@ -1080,13 +1121,25 @@ pip install reportlab
 
 ---
 
-### `ModuleNotFoundError: No module named 'aiosqlite'`
+### `ModuleNotFoundError: No module named 'asyncpg'`
 
 ```bash
-pip install aiosqlite
+pip install asyncpg
 ```
 
-Without `aiosqlite`, sessions fall back to in-memory storage and are lost on restart. Action item statuses and analytics still work in-session but won't persist.
+### `RuntimeError: DATABASE_URL is not set`
+
+The backend refuses to start without a Postgres connection string — this is
+intentional, since user accounts and per-user history can't work without a
+real database. Set `DATABASE_URL` in your `.env` (local) or in your hosting
+provider's environment variables (Render, etc). See [Database (Postgres)](#database-postgres).
+
+### `401 Unauthorized` on every request
+
+Make sure you're sending `Authorization: Bearer <token>` on every request
+after login/register, and that the token hasn't expired (`JWT_EXPIRE_MINUTES`,
+default 7 days). If the server restarted and `JWT_SECRET` wasn't set
+explicitly, all previously issued tokens are invalidated — log in again.
 
 ---
 
@@ -1098,24 +1151,165 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8001
 
 ---
 
+## Authentication
+
+The API requires a genuine account for every user. Passwords are hashed with
+bcrypt (via `passlib`) and never stored or logged in plain text. Logging in
+returns a signed JWT (HS256) that must be sent as `Authorization: Bearer <token>`
+on every other request. Every session, chat history, and action-item status is
+scoped to the `user_id` embedded in that token — one account can never see,
+query, export, or delete another account's data, even by guessing a session ID.
+
+### Register
+
+```bash
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com", "password": "a-strong-password", "display_name": "You"}'
+```
+
+Response:
+```json
+{
+  "access_token": "eyJhbGciOi...",
+  "token_type": "bearer",
+  "user": { "id": "…", "email": "you@example.com", "display_name": "You" }
+}
+```
+
+### Login
+
+```bash
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com", "password": "a-strong-password"}'
+```
+
+### Using the token
+
+```bash
+curl http://localhost:8000/sessions \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+### Who am I
+
+```bash
+curl http://localhost:8000/auth/me -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+Tokens expire after `JWT_EXPIRE_MINUTES` (default 7 days) — the client should
+log the user out (clear the stored token) and show the login screen again on
+a `401` response.
+
+---
+
+## Database (Postgres)
+
+Users, sessions, chat history, and action-item statuses are stored in
+**Postgres** (via `asyncpg`), not SQLite. This is what makes histories
+genuinely separated per user and lets data survive restarts/redeploys —
+including on Render's free tier, where the web service's local disk is wiped
+on every deploy and spin-down.
+
+Set a single environment variable:
+
+```bash
+DATABASE_URL=postgresql://user:password@host:5432/dbname
+```
+
+Any standard Postgres works. Free options:
+- **Render Postgres** (free tier) — easiest if you're already deploying the
+  backend on Render; `render.yaml` in the repo root provisions this
+  automatically.
+- **Neon** (neon.tech, free tier) — serverless Postgres, generous free plan.
+- **Supabase** (supabase.com, free tier) — Postgres + a dashboard UI.
+
+The app creates its own tables (`users`, `sessions`, `action_item_statuses`)
+automatically on first startup — no manual migration step needed.
+
+> **Free-tier caveat:** free Postgres plans on most providers pause or expire
+> after a period of inactivity or a fixed number of days. If your users
+> disappear after a long idle period, check your database provider's free-tier
+> retention policy — this is a provider limitation, not an application bug.
+
+---
+
+## Deploying to Render (free tier)
+
+The repo includes a `render.yaml` Blueprint that provisions a free Postgres
+database and a free web service together.
+
+1. **Push this repo to GitHub** (if you haven't already).
+2. **Get a free Groq API key** at [console.groq.com](https://console.groq.com)
+   — needed for the LLM extraction/chat features.
+3. In the [Render Dashboard](https://dashboard.render.com), click
+   **New → Blueprint**, and select your repository. Render will read
+   `render.yaml` from the repo root and show you the resources it's about
+   to create: a Postgres database (`mihub-db`) and a web service
+   (`mihub-backend`).
+4. Click **Apply**. Render provisions the database, wires its connection
+   string into the web service's `DATABASE_URL` automatically, and generates
+   a random `JWT_SECRET` for you.
+5. Once the blueprint is created, open the **mihub-backend** service →
+   **Environment**, and add your `GROQ_API_KEY` (this one field is left for
+   you to fill in manually since it's a personal API key, not something
+   Render can generate).
+6. Wait for the first deploy to finish (the build step also downloads the
+   spaCy model, so it can take a few minutes). Your API is now live at
+   `https://mihub-backend.onrender.com` (or whatever name you gave it).
+7. Test it:
+   ```bash
+   curl https://mihub-backend.onrender.com/health
+   ```
+
+### Free-tier behavior to expect
+
+- **Cold starts:** a free web service spins down after ~15 minutes without
+  traffic and takes 30-60 seconds to wake up on the next request. This is
+  normal — the web and Flutter clients in this repo already handle this with
+  a "reconnecting…" state and automatic retry.
+- **No persistent local disk:** never write anything you need to keep to the
+  local filesystem — that's why this project moved from SQLite to Postgres.
+- **Free Postgres limits:** check Render's current free-tier storage and
+  expiry limits in their pricing page; for a class project or personal tool
+  this is normally plenty.
+
+### Locking down CORS once you have real URLs
+
+By default `CORS_ORIGINS=*` (set in `render.yaml`) allows any website to call
+your API — fine to get started, but once your web app has a fixed URL
+(e.g. deployed on Vercel/Netlify/Render Static Site), tighten it:
+
+In the Render dashboard, edit the `mihub-backend` service's `CORS_ORIGINS`
+environment variable to a comma-separated list, e.g.:
+
+```
+CORS_ORIGINS=https://your-web-app.vercel.app,https://your-custom-domain.com
+```
+
+Mobile apps (Flutter) aren't affected by CORS — it's a browser-only
+restriction — so this only matters for the web frontend's origin.
+
+---
+
 ## Production Notes
 
 ### Sessions
-Sessions are stored in **SQLite** (`sessions.db`) and survive server restarts by default. The `SESSION_TTL_HOURS` variable controls automatic eviction of idle sessions (default: 24 hours). For high-concurrency production use, consider migrating to PostgreSQL via `asyncpg`.
+Sessions are stored in **Postgres**, scoped by `user_id`, and survive
+restarts/redeploys. The `SESSION_TTL_HOURS` variable controls automatic
+eviction of idle sessions (default: 24 hours) — raise this if you want
+uploaded transcripts to stick around longer.
 
 ### Action item statuses
-Status updates are written to a separate `action_item_statuses` table in the same SQLite database. They are loaded into memory on startup and written through on every update, so reads are fast and writes are durable.
+Status updates are written to a separate `action_item_statuses` table in the
+same Postgres database. They are loaded into memory on startup and written
+through on every update, so reads are fast and writes are durable.
 
 ### CORS
-The API currently allows all origins (`*`). For production, restrict this in `main.py`:
-
-```python
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://yourdomain.com"],
-    ...
-)
-```
+Controlled by the `CORS_ORIGINS` environment variable — a comma-separated
+list of allowed origins, or `*` to allow all (the default, convenient for
+development). See "Locking down CORS" above for production guidance.
 
 ### Running without `--reload` in production
 
@@ -1123,10 +1317,25 @@ app.add_middleware(
 uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
 ```
 
+(Render's `startCommand` in `render.yaml` already does this correctly —
+`--reload` is a local-dev-only flag.)
+
 ### Environment variables
-Never commit your `.env` file. Add it to `.gitignore`:
+Never commit your `.env` file or any real `DATABASE_URL` / `JWT_SECRET` /
+`GROQ_API_KEY` values. Add to `.gitignore`:
 
 ```bash
 echo ".env" >> .gitignore
-echo "sessions.db" >> .gitignore
 ```
+
+Required in every environment:
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | Yes | Postgres connection string — users + sessions live here. |
+| `JWT_SECRET` | Yes (prod) | Signs auth tokens. If unset, a random one is generated per process — all users get logged out on every restart. |
+| `GROQ_API_KEY` | Recommended | Free, fast cloud LLM for extraction/chat. Without it, falls back to Ollama (needs a local Ollama server). |
+| `JWT_EXPIRE_MINUTES` | No | Access token lifetime in minutes (default 10080 = 7 days). |
+| `CORS_ORIGINS` | No | Comma-separated allowed origins, or `*` (default). |
+| `SESSION_TTL_HOURS` | No | Hours of inactivity before a session is auto-deleted (default 24). |
+| `EXTRACTOR` | No | `llm` (default) or `nlp` (offline, spaCy-based, no LLM calls). |

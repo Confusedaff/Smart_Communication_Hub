@@ -20,12 +20,13 @@ A fully functional Flutter mobile app for the [Meeting Intelligence Hub](https:/
 - [Project Structure](#project-structure)
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Authentication](#authentication)
 - [Running the App](#running-the-app)
 - [Building for Release](#building-for-release)
 - [Screen Reference](#screen-reference)
 - [API Integration](#api-integration)
 - [Troubleshooting](#troubleshooting)
-- [AWS Free Tier Hosting Guide](#aws-free-tier-hosting-guide)
+- [Connecting to a Render-Hosted Backend](#connecting-to-a-render-hosted-backend)
 
 ---
 
@@ -35,6 +36,7 @@ A fully functional Flutter mobile app for the [Meeting Intelligence Hub](https:/
 |---|---|
 | **Transcript Upload** | Pick `.txt` or `.vtt` files via the system file picker |
 | **Batch Upload** | Select and upload multiple transcript files at once — results and errors reported per file |
+| **Accounts & Private History** | Sign up / log in with email + password; every session, chat, and action-item is scoped to your account — no one else can see your transcripts |
 | **AI Extraction** | Run LLM or NLP extraction — decisions, action items, summary, stats |
 | **Engine Toggle** | Switch between 🤖 LLM (Groq/Ollama) and 🧠 NLP (spaCy) mid-session |
 | **Action Items Tab** | Full action item tracker with status management (Pending / In Progress / Done / Blocked), live progress bar, deadline alerts, and per-item status updates synced to the backend |
@@ -90,12 +92,15 @@ meeting_intelligence_hub/
 │   ├── models/
 │   │   ├── session_model.dart       # Upload session data
 │   │   ├── extraction_model.dart    # Decisions, action items, summary
-│   │   └── chat_model.dart          # Chat messages, citations, timing
+│   │   ├── chat_model.dart          # Chat messages, citations, timing
+│   │   └── auth_model.dart          # Authenticated user (id, email, display name)
 │   │
 │   ├── services/
-│   │   └── api_service.dart         # All HTTP calls to the backend API
+│   │   ├── api_service.dart         # All HTTP calls to the backend API (attaches JWT to every request)
+│   │   └── auth_service.dart        # Register/login/logout, persists JWT via shared_preferences
 │   │
 │   ├── screens/
+│   │   ├── login_screen.dart        # Sign up / sign in screen shown before anything else
 │   │   ├── sessions_screen.dart     # Landing page — session list, upload, batch upload
 │   │   ├── dashboard_screen.dart    # Tab shell — extract / actions / analytics / chat / transcript
 │   │   ├── extraction_tab.dart      # AI extraction results UI
@@ -222,6 +227,26 @@ ifconfig | grep "inet " | grep -v 127.0.0.1
 # Windows
 ipconfig | findstr IPv4
 ```
+
+---
+
+## Authentication
+
+The backend requires a real account — the app can't be used without signing up or logging in first.
+
+**On first launch**, you'll see a sign-in screen:
+
+1. Tap **Sign Up** to create an account (email + password, minimum 8 characters; display name optional).
+2. Or, if you already have one, enter your email and password and tap **Sign In**.
+3. Once authenticated, you're taken straight to the Sessions screen — and every transcript you upload from then on belongs only to your account.
+
+**Backend URL before logging in:** if you haven't pointed the app at your backend yet, tap the small server icon in the top-right of the login screen to set it (same field as Settings → Backend Configuration).
+
+**Staying logged in:** the app stores your login token securely on-device (via `shared_preferences`) so you won't need to log in again on every launch. Logging out (Settings → Account → Log Out) clears it and returns you to the sign-in screen.
+
+**If your session expires:** access tokens are valid for 7 days by default (configurable server-side via `JWT_EXPIRE_MINUTES`). If a token expires — or the backend was redeployed without a fixed `JWT_SECRET`, invalidating all tokens — the app automatically detects the resulting `401` response from *any* screen and routes you back to the login screen, rather than getting stuck on an error.
+
+**Private, separated histories:** every session, chat conversation, and action-item status you create is tied to your account on the backend. Two different accounts on the same backend will never see each other's transcripts, even if they somehow knew each other's session IDs.
 
 ---
 
@@ -473,6 +498,7 @@ All backend communication is in `lib/services/api_service.dart`. A static `baseU
 ### Workflow
 
 ```
+0.  POST   /auth/register (or /auth/login)                Get a JWT — required before anything else
 1.  POST   /upload                                        Upload .txt/.vtt → SessionModel
 1b. POST   /upload/batch                                  Upload multiple files → list of results
 2.  GET    /sessions/{id}/extract?engine=llm              Run AI extraction → ExtractionModel
@@ -492,7 +518,7 @@ All backend communication is in `lib/services/api_service.dart`. A static `baseU
 
 ### Error handling
 
-All `ApiService` methods throw `ApiException` on non-2xx responses. The UI catches these and shows inline error cards or SnackBar messages.
+All `ApiService` methods throw `ApiException` on non-2xx responses, except a `401` (missing/expired/invalid token), which throws a distinct `AuthRequiredException`. That exception is caught globally in `main.dart` via `ApiService.onUnauthorized`, which logs the user out locally and routes back to the login screen — from any screen in the app, not just the sessions list. Other errors are caught by the UI and shown as inline error cards or SnackBar messages.
 
 Timeouts:
 
@@ -539,6 +565,12 @@ This happens on physical Android 9+ devices when using `http://`.
 **Fix for development:** Confirm `android:usesCleartextTraffic="true"` is set in `AndroidManifest.xml` (it is, by default, in this project).
 
 **Fix for production:** Use HTTPS. See [AWS deployment guide](#aws-free-tier-hosting-guide) below.
+
+---
+
+### Kept logging out unexpectedly / "session expired" right after signing in
+
+This usually means `JWT_SECRET` isn't set on the backend (or changed between requests) — every restart of a backend without a fixed `JWT_SECRET` invalidates all previously issued tokens. If you're self-hosting, set `JWT_SECRET` to a fixed value in the backend's environment (see `backend/README.md`); Render's blueprint (`render.yaml`) generates and keeps a stable one for you automatically.
 
 ---
 
@@ -605,7 +637,25 @@ flutter run
 
 ---
 
-<!-- ## AWS Free Tier Hosting Guide
+## Connecting to a Render-Hosted Backend
+
+If you've deployed the backend to Render (see `backend/README.md` → "Deploying to Render"), pointing this app at it takes two steps:
+
+1. Get your Render service URL — it looks like `https://mihub-backend.onrender.com`.
+2. In the app: **Sessions screen → gear icon → Settings → Backend Configuration**, paste the URL, and tap **Save & Test Connection**. (Or, before logging in, tap the server icon on the login screen.)
+
+That's it — the app already sends `https://` correctly and the JWT-based auth layer works the same whether the backend is local or on Render.
+
+### What to expect on Render's free tier
+
+- **Cold starts:** a free Render web service spins down after ~15 minutes of no traffic. The next request wakes it up, which takes 30-60 seconds. The Sessions screen's "Reconnecting…" indicator handles this automatically — it retries a few times with a short delay, so you don't need to do anything except wait a moment on the first request after idling.
+- **No config changes needed for HTTPS:** Render gives you a `https://` URL by default, so none of the Android `usesCleartextTraffic` / iOS `NSAllowsArbitraryLoads` workarounds below are needed — those only apply to a local `http://` backend during development.
+- **Accounts persist across restarts:** since the backend stores users and sessions in Postgres (not local disk), your account and history survive Render's cold starts and redeploys.
+
+<details>
+<summary>Older: AWS Free Tier Hosting Guide (EC2 + S3 + CloudFront)</summary>
+
+
 
 Yes — you can host both the backend and the web frontend on AWS Free Tier. Here is a complete, practical guide.
 
@@ -934,4 +984,5 @@ sudo systemctl restart mih-backend
 sudo systemctl status nginx
 sudo nginx -t   # test config syntax
 ```
--->
+
+</details>

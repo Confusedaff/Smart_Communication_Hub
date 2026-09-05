@@ -1,0 +1,22 @@
+{
+	"BUILD_DIR" : "C:/Me/Projects/Communication_Hub/build/MeetingIntelligenceHub_autogen",
+	"CMAKE_BINARY_DIR" : "C:/Me/Projects/Communication_Hub/build",
+	"CMAKE_CURRENT_BINARY_DIR" : "C:/Me/Projects/Communication_Hub/build",
+	"CMAKE_CURRENT_SOURCE_DIR" : "C:/Me/Projects/Communication_Hub/cpp-client",
+	"CMAKE_SOURCE_DIR" : "C:/Me/Projects/Communication_Hub/cpp-client",
+	"CROSS_CONFIG" : false,
+	"GENERATOR" : "MinGW Makefiles",
+	"INCLUDE_DIR" : "C:/Me/Projects/Communication_Hub/build/MeetingIntelligenceHub_autogen/include",
+	"INPUTS" : [],
+	"LOCK_FILE" : "C:/Me/Projects/Communication_Hub/build/CMakeFiles/MeetingIntelligenceHub_autogen.dir/AutoRcc_resources_3YJK5W5UP7_Lock.lock",
+	"MULTI_CONFIG" : false,
+	"OPTIONS" : [ "-name", "resources" ],
+	"OUTPUT_CHECKSUM" : "3YJK5W5UP7",
+	"OUTPUT_NAME" : "qrc_resources.cpp",
+	"RCC_EXECUTABLE" : "C:/msys64/ucrt64/share/qt6/bin/rcc.exe",
+	"RCC_LIST_OPTIONS" : [ "--list" ],
+	"SETTINGS_FILE" : "C:/Me/Projects/Communication_Hub/build/CMakeFiles/MeetingIntelligenceHub_autogen.dir/AutoRcc_resources_3YJK5W5UP7_Used.txt",
+	"SOURCE" : "C:/Me/Projects/Communication_Hub/cpp-client/resources/resources.qrc",
+	"USE_BETTER_GRAPH" : true,
+	"VERBOSITY" : 0
+}

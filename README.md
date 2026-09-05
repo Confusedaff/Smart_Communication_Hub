@@ -229,13 +229,14 @@ The backend is the single source of truth for all transcript processing. It hand
 
 ### Features
 
+- **Accounts** — email + password sign-up/login (bcrypt-hashed passwords, JWT bearer tokens); every session, chat, and action-item is private to the account that created it
 - **Upload** — accepts `.txt` and `.vtt` transcript files, parses speaker segments
 - **Extraction** — two engines selectable per-request:
   - `nlp` — spaCy-based rule extraction (fast, fully offline)
   - `llm` — Groq (cloud) or Ollama (local) LLM extraction (higher quality)
 - **Chat** — RAG Q&A over the transcript with cited speaker excerpts
 - **Export** — CSV and PDF report generation
-- **Session management** — each uploaded transcript gets a UUID session ID; all state is keyed to it
+- **Session management** — each uploaded transcript gets a UUID session ID, owned by the uploading user; all state is keyed to it in Postgres
 - **Timing** — every LLM call is timed and returned to the client for display
 
 ### Prerequisites
@@ -244,6 +245,7 @@ The backend is the single source of truth for all transcript processing. It hand
 |------|---------|
 | Python | 3.10+ |
 | pip | latest |
+| Postgres | any recent version — free tier from Render/Neon/Supabase all work |
 
 ### Install
 
@@ -252,6 +254,17 @@ cd backend
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 ```
+
+### Configure
+
+At minimum, set a Postgres connection string:
+
+```bash
+export DATABASE_URL=postgresql://user:password@host:5432/dbname
+export JWT_SECRET=some-long-random-string   # optional locally, required in production
+```
+
+See `backend/README.md` for the full environment variable reference.
 
 ### Run
 
@@ -267,6 +280,16 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
 ```
 
 The server starts at `http://localhost:8000`. Interactive API docs: `http://localhost:8000/docs`.
+
+### Deploying to Render (free tier)
+
+The repo includes a `render.yaml` blueprint that provisions a free Postgres database and a free web service together in one step — see **"Deploying to Render"** in `backend/README.md` for the full walkthrough. Short version:
+
+1. Push this repo to GitHub.
+2. In the Render dashboard: **New → Blueprint** → select the repo.
+3. Render provisions Postgres + the web service and wires `DATABASE_URL`/`JWT_SECRET` automatically.
+4. Add your `GROQ_API_KEY` manually in the service's environment settings.
+5. Point the web app and/or Flutter app at the resulting `https://your-service.onrender.com` URL.
 
 ---
 

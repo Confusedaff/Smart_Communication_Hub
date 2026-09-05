@@ -1,0 +1,110 @@
+[
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\MeetingIntelligenceHub_autogen\\mocs_compilation.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\build\\MeetingIntelligenceHub_autogen\\mocs_compilation.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/build/MeetingIntelligenceHub_autogen/mocs_compilation.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/MeetingIntelligenceHub_autogen/mocs_compilation.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\main.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\main.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/main.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/main.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\MainWindow.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\MainWindow.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/MainWindow.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/MainWindow.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\UploadWidget.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\UploadWidget.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/UploadWidget.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/UploadWidget.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\ExtractionPanel.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\ExtractionPanel.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/ExtractionPanel.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/ExtractionPanel.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\ActionItemsPanel.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\ActionItemsPanel.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/ActionItemsPanel.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/ActionItemsPanel.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\AnalyticsPanel.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\AnalyticsPanel.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/AnalyticsPanel.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/AnalyticsPanel.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\ChatPanel.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\ChatPanel.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/ChatPanel.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/ChatPanel.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\TranscriptPanel.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\TranscriptPanel.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/TranscriptPanel.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/TranscriptPanel.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\Sidebar.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\Sidebar.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/Sidebar.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/Sidebar.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\ApiClient.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\ApiClient.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/ApiClient.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/ApiClient.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\AnimatedBackground.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\AnimatedBackground.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/AnimatedBackground.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/AnimatedBackground.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\StyleSheet.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\StyleSheet.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/StyleSheet.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/StyleSheet.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\LoadingSpinner.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\LoadingSpinner.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/LoadingSpinner.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/LoadingSpinner.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\TagBadge.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\TagBadge.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/TagBadge.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/TagBadge.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\StatCard.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\StatCard.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/StatCard.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/StatCard.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\src\\TimingWidget.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\cpp-client\\src\\TimingWidget.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/cpp-client/src/TimingWidget.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/src/TimingWidget.cpp.obj"
+},
+{
+  "directory": "C:/Me/Projects/Communication_Hub/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 @CMakeFiles/MeetingIntelligenceHub.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\MeetingIntelligenceHub.dir\\MeetingIntelligenceHub_autogen\\3YJK5W5UP7\\qrc_resources.cpp.obj -c C:\\Me\\Projects\\Communication_Hub\\build\\MeetingIntelligenceHub_autogen\\3YJK5W5UP7\\qrc_resources.cpp",
+  "file": "C:/Me/Projects/Communication_Hub/build/MeetingIntelligenceHub_autogen/3YJK5W5UP7/qrc_resources.cpp",
+  "output": "CMakeFiles/MeetingIntelligenceHub.dir/MeetingIntelligenceHub_autogen/3YJK5W5UP7/qrc_resources.cpp.obj"
+}
+]

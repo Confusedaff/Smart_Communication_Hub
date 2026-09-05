@@ -1,15 +1,23 @@
 """
-sessions.py — Persistent session store backed by SQLite (via aiosqlite).
+sessions.py — Per-user session store backed by Postgres (via asyncpg / db.py).
 
-Improvements over the original in-memory dict:
-  1. Sessions survive server restarts (SQLite persistence).
+Every function that reads or writes a session now requires `user_id` and
+enforces `WHERE user_id = $user_id` on every query. This is what gives each
+account a private, separated history: a user can never see, extract from,
+chat with, or delete another user's transcripts — even if they somehow
+guessed a session_id.
+
+Behaviour preserved from the original SQLite version:
+  1. Sessions persist across server restarts (now via real Postgres).
   2. last_accessed timestamp updated on every read.
   3. Background cleanup task evicts sessions older than SESSION_TTL_HOURS.
-  4. Extraction deduplication by sha256(raw_text) avoids redundant LLM calls.
-  5. Graceful fallback to in-memory if aiosqlite is unavailable.
+  4. Extraction deduplication by sha256(raw_text) avoids redundant LLM calls
+     — scoped per-user so one user's content never short-circuits another's
+     extraction (keeps histories fully independent).
 """
 
 import re
+import os
 import uuid
 import json
 import hashlib
@@ -18,32 +26,23 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
+import db
+
 logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-SESSION_TTL_HOURS  = int(__import__("os").getenv("SESSION_TTL_HOURS", "24"))
-DB_PATH            = __import__("os").getenv("SESSION_DB_PATH", "sessions.db")
+SESSION_TTL_HOURS = int(os.getenv("SESSION_TTL_HOURS", "24"))
 
-# ── In-memory cache (mirrors DB for fast reads) ───────────────────────────────
-_store: dict[str, dict] = {}
+# ── In-memory per-user extraction cache: (user_id, sha256(raw_text)) -> dict ──
+# Pure perf optimisation (skip redundant LLM calls on identical re-uploads).
+# Scoped per-user so it can never leak content between accounts.
+_extraction_cache: dict[tuple, dict] = {}
 
-# ── Extraction cache: sha256(raw_text) -> extraction result dict ──────────────
-_extraction_cache: dict[str, dict] = {}
-
-# ── Action item status store: (session_id, item_id) -> status dict ────────────
-# status dict: { "status": str, "updated_at": str, "note": str | None }
+# ── In-memory action item status cache: (session_id, item_id) -> status dict ──
+# Loaded from / mirrored to Postgres. Session ownership is always re-checked
+# against the DB before this cache is used for anything, so a forged
+# session_id can't be used to read another user's statuses.
 _action_statuses: dict[tuple, dict] = {}
-
-# ── aiosqlite availability ────────────────────────────────────────────────────
-try:
-    import aiosqlite
-    _SQLITE_OK = True
-except ImportError:
-    _SQLITE_OK = False
-    logger.warning(
-        "aiosqlite not installed — sessions stored in memory only (not persistent). "
-        "Install with: pip install aiosqlite"
-    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -56,97 +55,32 @@ def _content_hash(raw_text: str) -> str:
     return hashlib.sha256(raw_text.encode()).hexdigest()
 
 
-def _session_to_row(s: dict) -> tuple:
-    return (
-        s["id"], s["filename"], s["created_at"], s["last_accessed"],
-        s["raw_text"], json.dumps(s["segments"]),
-        json.dumps(s["extraction"]) if s["extraction"] else None,
-        s.get("extraction_engine", ""), json.dumps(s["chat_history"]),
-        _content_hash(s["raw_text"]),
-    )
-
-
 def _row_to_session(row) -> dict:
     return {
-        "id": row[0], "filename": row[1], "created_at": row[2],
-        "last_accessed": row[3], "raw_text": row[4],
-        "segments": json.loads(row[5]),
-        "extraction": json.loads(row[6]) if row[6] else None,
-        "extraction_engine": row[7],
-        "chat_history": json.loads(row[8]),
+        "id": row["id"],
+        "user_id": str(row["user_id"]),
+        "filename": row["filename"],
+        "created_at": row["created_at"],
+        "last_accessed": row["last_accessed"],
+        "raw_text": row["raw_text"],
+        "segments": json.loads(row["segments"]) if isinstance(row["segments"], str) else row["segments"],
+        "extraction": (json.loads(row["extraction"]) if isinstance(row["extraction"], str) else row["extraction"]) if row["extraction"] else None,
+        "extraction_engine": row["extraction_engine"],
+        "chat_history": json.loads(row["chat_history"]) if isinstance(row["chat_history"], str) else (row["chat_history"] or []),
     }
 
 
-# ── DB initialisation ─────────────────────────────────────────────────────────
-
 async def init_db() -> None:
-    """Create table and load existing sessions into memory cache."""
-    if not _SQLITE_OK:
-        return
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS sessions (
-                id               TEXT PRIMARY KEY,
-                filename         TEXT,
-                created_at       TEXT,
-                last_accessed    TEXT,
-                raw_text         TEXT,
-                segments         TEXT,
-                extraction       TEXT,
-                extraction_engine TEXT,
-                chat_history     TEXT,
-                content_hash     TEXT
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS action_item_statuses (
-                session_id  TEXT NOT NULL,
-                item_id     INTEGER NOT NULL,
-                status      TEXT NOT NULL DEFAULT 'pending',
-                note        TEXT,
-                updated_at  TEXT NOT NULL,
-                PRIMARY KEY (session_id, item_id)
-            )
-        """)
-        await db.commit()
-        async with db.execute(
-            "SELECT content_hash, extraction FROM sessions WHERE extraction IS NOT NULL"
-        ) as cur:
-            async for row in cur:
-                _extraction_cache[row[0]] = json.loads(row[1])
-        async with db.execute("SELECT * FROM sessions") as cur:
-            async for row in cur:
-                s = _row_to_session(row)
-                _store[s["id"]] = s
-        # Load action item statuses into memory
-        async with db.execute("SELECT session_id, item_id, status, note, updated_at FROM action_item_statuses") as cur:
-            async for row in cur:
-                _action_statuses[(row[0], row[1])] = {
-                    "status": row[2], "note": row[3], "updated_at": row[4]
-                }
-    logger.info(f"[Sessions] Loaded {len(_store)} sessions from SQLite ({DB_PATH})")
-
-
-async def _persist_session(session: dict) -> None:
-    if not _SQLITE_OK:
-        return
-    row = _session_to_row(session)
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            INSERT OR REPLACE INTO sessions
-                (id, filename, created_at, last_accessed, raw_text,
-                 segments, extraction, extraction_engine, chat_history, content_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, row)
-        await db.commit()
-
-
-async def _delete_from_db(session_id: str) -> None:
-    if not _SQLITE_OK:
-        return
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
-        await db.commit()
+    """Load persisted action-item statuses into the in-memory cache."""
+    async with db.pool().acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT session_id, item_id, status, note, updated_at FROM action_item_statuses"
+        )
+    for row in rows:
+        _action_statuses[(row["session_id"], row["item_id"])] = {
+            "status": row["status"], "note": row["note"], "updated_at": row["updated_at"],
+        }
+    logger.info("[Sessions] Action item statuses loaded from Postgres")
 
 
 # ── Background cleanup task ───────────────────────────────────────────────────
@@ -158,106 +92,143 @@ async def cleanup_expired_sessions() -> None:
         cutoff = (
             datetime.now(timezone.utc) - timedelta(hours=SESSION_TTL_HOURS)
         ).isoformat()
-        expired = [
-            sid for sid, s in list(_store.items())
-            if s.get("last_accessed", s["created_at"]) < cutoff
-        ]
-        for sid in expired:
-            _store.pop(sid, None)
-            await _delete_from_db(sid)
-        if expired:
-            logger.info(f"[Sessions] Evicted {len(expired)} expired sessions (TTL={SESSION_TTL_HOURS}h)")
+        try:
+            async with db.pool().acquire() as conn:
+                deleted = await conn.fetch(
+                    "DELETE FROM sessions WHERE last_accessed < $1 RETURNING id",
+                    cutoff,
+                )
+            if deleted:
+                logger.info(f"[Sessions] Evicted {len(deleted)} expired sessions (TTL={SESSION_TTL_HOURS}h)")
+        except Exception as exc:
+            logger.error(f"[Sessions] Cleanup failed: {exc}")
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
+# ── Public API (all user-scoped) ──────────────────────────────────────────────
 
-async def create_session(filename: str, raw_text: str, segments: list[dict]) -> str:
+async def create_session(user_id: str, filename: str, raw_text: str, segments: list[dict]) -> str:
     session_id = str(uuid.uuid4())
     now = _now_iso()
-    session = {
-        "id": session_id, "filename": filename,
-        "created_at": now, "last_accessed": now,
-        "raw_text": raw_text, "segments": segments,
-        "extraction": None, "extraction_engine": "",
-        "chat_history": [],
-    }
     h = _content_hash(raw_text)
-    if h in _extraction_cache:
-        session["extraction"] = _extraction_cache[h]
-        logger.info(f"[Sessions] Content-hash cache hit {h[:12]}… — reusing extraction")
-    _store[session_id] = session
-    await _persist_session(session)
+
+    extraction = _extraction_cache.get((user_id, h))
+    if extraction:
+        logger.info(f"[Sessions] Content-hash cache hit for user {user_id[:8]}… — reusing extraction")
+
+    async with db.pool().acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO sessions
+                (id, user_id, filename, created_at, last_accessed, raw_text,
+                 segments, extraction, extraction_engine, chat_history, content_hash)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            """,
+            session_id, user_id, filename, now, now, raw_text,
+            json.dumps(segments), json.dumps(extraction) if extraction else None,
+            "", json.dumps([]), h,
+        )
     return session_id
 
 
-def get_session(session_id: str) -> Optional[dict]:
-    session = _store.get(session_id)
-    if session:
-        session["last_accessed"] = _now_iso()
-        try:
-            asyncio.get_event_loop().create_task(
-                _persist_last_accessed(session_id, session["last_accessed"])
-            )
-        except RuntimeError:
-            pass
+async def get_session(session_id: str, user_id: str) -> Optional[dict]:
+    """Fetch a session, but ONLY if it belongs to user_id. Updates last_accessed."""
+    now = _now_iso()
+    async with db.pool().acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM sessions WHERE id = $1 AND user_id = $2", session_id, user_id,
+        )
+        if row is None:
+            return None
+        await conn.execute(
+            "UPDATE sessions SET last_accessed = $1 WHERE id = $2", now, session_id,
+        )
+    session = _row_to_session(row)
+    session["last_accessed"] = now
     return session
 
 
-async def _persist_last_accessed(session_id: str, ts: str) -> None:
-    if not _SQLITE_OK:
-        return
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "UPDATE sessions SET last_accessed = ? WHERE id = ?", (ts, session_id)
+async def set_extraction(session_id: str, user_id: str, extraction: dict) -> None:
+    async with db.pool().acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT raw_text FROM sessions WHERE id = $1 AND user_id = $2", session_id, user_id,
         )
-        await db.commit()
+        if row is None:
+            return
+        await conn.execute(
+            "UPDATE sessions SET extraction = $1 WHERE id = $2 AND user_id = $3",
+            json.dumps(extraction), session_id, user_id,
+        )
+    h = _content_hash(row["raw_text"])
+    _extraction_cache[(user_id, h)] = extraction
 
 
-async def set_extraction(session_id: str, extraction: dict) -> None:
-    if session_id not in _store:
-        return
-    _store[session_id]["extraction"] = extraction
-    h = _content_hash(_store[session_id]["raw_text"])
-    _extraction_cache[h] = extraction
-    await _persist_session(_store[session_id])
+async def set_extraction_engine(session_id: str, user_id: str, engine_label: str) -> None:
+    async with db.pool().acquire() as conn:
+        await conn.execute(
+            "UPDATE sessions SET extraction_engine = $1 WHERE id = $2 AND user_id = $3",
+            engine_label, session_id, user_id,
+        )
 
 
-async def append_chat(session_id: str, role: str, content: str) -> None:
-    if session_id not in _store:
-        return
-    _store[session_id]["chat_history"].append({
-        "role": role, "content": content, "timestamp": _now_iso(),
-    })
-    await _persist_session(_store[session_id])
+async def append_chat(session_id: str, user_id: str, role: str, content: str) -> None:
+    async with db.pool().acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT chat_history FROM sessions WHERE id = $1 AND user_id = $2", session_id, user_id,
+        )
+        if row is None:
+            return
+        history = json.loads(row["chat_history"]) if isinstance(row["chat_history"], str) else (row["chat_history"] or [])
+        history.append({"role": role, "content": content, "timestamp": _now_iso()})
+        await conn.execute(
+            "UPDATE sessions SET chat_history = $1 WHERE id = $2 AND user_id = $3",
+            json.dumps(history), session_id, user_id,
+        )
 
 
-def list_sessions() -> list[dict]:
-    return [
-        {
-            "id": s["id"], "filename": s["filename"],
-            "created_at": s["created_at"],
-            "last_accessed": s.get("last_accessed", s["created_at"]),
-            "has_extraction": s["extraction"] is not None,
-            "chat_turns": len(s["chat_history"]) // 2,
-        }
-        for s in _store.values()
-    ]
+async def list_sessions_async(user_id: str) -> list[dict]:
+    """Return summaries for all sessions owned by user_id — never another user's."""
+    async with db.pool().acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, filename, created_at, last_accessed, extraction, chat_history
+            FROM sessions WHERE user_id = $1
+            ORDER BY last_accessed DESC
+            """,
+            user_id,
+        )
+    result = []
+    for row in rows:
+        chat_history = json.loads(row["chat_history"]) if isinstance(row["chat_history"], str) else (row["chat_history"] or [])
+        result.append({
+            "id": row["id"], "filename": row["filename"],
+            "created_at": row["created_at"],
+            "last_accessed": row["last_accessed"] or row["created_at"],
+            "has_extraction": row["extraction"] is not None,
+            "chat_turns": len(chat_history) // 2,
+        })
+    return result
 
 
-async def clear_chat_history(session_id: str) -> bool:
-    """Clear the chat history for a session. Returns False if session not found."""
-    if session_id not in _store:
-        return False
-    _store[session_id]["chat_history"] = []
-    await _persist_session(_store[session_id])
-    return True
+async def clear_chat_history(session_id: str, user_id: str) -> bool:
+    async with db.pool().acquire() as conn:
+        result = await conn.execute(
+            "UPDATE sessions SET chat_history = $1 WHERE id = $2 AND user_id = $3",
+            json.dumps([]), session_id, user_id,
+        )
+    return result.endswith("1")
 
 
-async def delete_session(session_id: str) -> bool:
-    existed = _store.pop(session_id, None) is not None
-    if existed:
-        await _delete_from_db(session_id)
-    return existed
+async def delete_session(session_id: str, user_id: str) -> bool:
+    async with db.pool().acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM sessions WHERE id = $1 AND user_id = $2", session_id, user_id,
+        )
+        await conn.execute(
+            "DELETE FROM action_item_statuses WHERE session_id = $1", session_id,
+        )
+    for key in [k for k in _action_statuses if k[0] == session_id]:
+        _action_statuses.pop(key, None)
+    return result.endswith("1")
 
 
 # ── Action item status tracking ───────────────────────────────────────────────
@@ -267,23 +238,22 @@ VALID_STATUSES = {"pending", "in_progress", "done", "blocked"}
 
 async def set_action_item_status(
     session_id: str,
+    user_id: str,
     item_id: int,
     status: str,
     note: Optional[str] = None,
 ) -> Optional[dict]:
     """
-    Set or update the status of an action item.
-    Returns the updated status dict, or None if session/item not found.
-    status must be one of: pending, in_progress, done, blocked.
+    Set or update the status of an action item — only if session_id belongs
+    to user_id. Returns the updated status dict, or None if not found/owned.
     """
     if status not in VALID_STATUSES:
         raise ValueError(f"Invalid status '{status}'. Must be one of: {', '.join(sorted(VALID_STATUSES))}")
 
-    session = _store.get(session_id)
+    session = await get_session(session_id, user_id)
     if not session or not session.get("extraction"):
         return None
 
-    # Validate item_id exists in this session's extraction
     action_items = session["extraction"].get("action_items", [])
     if not any(a.get("id") == item_id for a in action_items):
         return None
@@ -292,14 +262,16 @@ async def set_action_item_status(
     entry = {"status": status, "note": note, "updated_at": now}
     _action_statuses[(session_id, item_id)] = entry
 
-    if _SQLITE_OK:
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute("""
-                INSERT OR REPLACE INTO action_item_statuses
-                    (session_id, item_id, status, note, updated_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (session_id, item_id, status, note, now))
-            await db.commit()
+    async with db.pool().acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO action_item_statuses (session_id, item_id, status, note, updated_at)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (session_id, item_id)
+            DO UPDATE SET status = $3, note = $4, updated_at = $5
+            """,
+            session_id, item_id, status, note, now,
+        )
 
     logger.info(f"[Sessions] Action item {item_id} in {session_id[:8]}… → {status}")
     return entry
@@ -314,16 +286,15 @@ def get_action_item_statuses(session_id: str) -> dict[int, dict]:
     }
 
 
-def get_enriched_action_items(session_id: str) -> list[dict]:
+def get_enriched_action_items(session: dict) -> list[dict]:
     """
-    Return action items from the session's extraction enriched with their
-    current status (defaults to 'pending' if never explicitly set).
+    Return action items from the (already-fetched, ownership-verified)
+    session's extraction enriched with their current status.
     """
-    session = _store.get(session_id)
     if not session or not session.get("extraction"):
         return []
 
-    statuses = get_action_item_statuses(session_id)
+    statuses = get_action_item_statuses(session["id"])
     items = []
     for item in session["extraction"].get("action_items", []):
         item_id = item.get("id")
@@ -334,136 +305,106 @@ def get_enriched_action_items(session_id: str) -> list[dict]:
 
 # ── Speaker analytics ─────────────────────────────────────────────────────────
 
-def get_speaker_analytics(session_id: str) -> Optional[dict]:
+def get_speaker_analytics(session: dict) -> Optional[dict]:
     """
-    Compute speaker-level analytics from segments and extraction data.
-
-    Returns:
-      - talk_time: per-speaker word count and % of transcript
-      - question_count: segments ending with '?'
-      - action_items_assigned: count of action items owned by each speaker
-      - decisions_made: count of decisions attributed to each speaker
-      - speaker_order: speakers in order of first appearance
+    Compute speaker-level analytics from an already-fetched, ownership-verified
+    session's segments and extraction data.
     """
-    session = _store.get(session_id)
     if not session:
         return None
 
-    segments   = session.get("segments", [])
+    segments = session.get("segments", [])
     extraction = session.get("extraction") or {}
 
-    # ── Word count and question detection per speaker ──────────────────────────
-    word_counts:     dict[str, int] = {}
+    word_counts: dict[str, int] = {}
     question_counts: dict[str, int] = {}
-    speaker_order:   list[str]      = []
+    speaker_order: list[str] = []
 
     for seg in segments:
         speaker = seg.get("speaker") or "Unknown"
-        text    = seg.get("text", "").strip()
+        text = seg.get("text", "").strip()
         if not text:
             continue
 
         if speaker not in word_counts:
-            word_counts[speaker]     = 0
+            word_counts[speaker] = 0
             question_counts[speaker] = 0
             speaker_order.append(speaker)
 
         words = len(text.split())
         word_counts[speaker] += words
 
-        # Count segments (not just sentences) that are questions
         if text.rstrip().endswith("?"):
             question_counts[speaker] += 1
 
-    total_words = sum(word_counts.values()) or 1  # avoid div-by-zero
+    total_words = sum(word_counts.values()) or 1
 
-    # ── Action item ownership ──────────────────────────────────────────────────
     action_owners: dict[str, int] = {}
     for item in extraction.get("action_items", []):
         owner = item.get("who")
         if owner:
             action_owners[owner] = action_owners.get(owner, 0) + 1
 
-    # ── Decision attribution ───────────────────────────────────────────────────
     decision_makers: dict[str, int] = {}
     for dec in extraction.get("decisions", []):
         maker = dec.get("made_by")
         if maker:
             decision_makers[maker] = decision_makers.get(maker, 0) + 1
 
-    # ── Assemble per-speaker records ───────────────────────────────────────────
     speakers_data = []
     for speaker in speaker_order:
-        wc  = word_counts[speaker]
+        wc = word_counts[speaker]
         pct = round(wc / total_words * 100, 1)
         speakers_data.append({
-            "speaker":          speaker,
-            "word_count":       wc,
-            "talk_share_pct":   pct,
-            "question_count":   question_counts.get(speaker, 0),
+            "speaker": speaker,
+            "word_count": wc,
+            "talk_share_pct": pct,
+            "question_count": question_counts.get(speaker, 0),
             "action_items_assigned": action_owners.get(speaker, 0),
-            "decisions_made":   decision_makers.get(speaker, 0),
+            "decisions_made": decision_makers.get(speaker, 0),
         })
 
-    # Sort by talk share descending
     speakers_data.sort(key=lambda x: x["word_count"], reverse=True)
 
     return {
-        "session_id":    session_id,
-        "filename":      session["filename"],
-        "total_words":   total_words,
+        "session_id": session["id"],
+        "filename": session["filename"],
+        "total_words": total_words,
         "total_segments": len(segments),
         "speaker_count": len(speaker_order),
-        "speakers":      speakers_data,
+        "speakers": speakers_data,
         "most_talkative": speakers_data[0]["speaker"] if speakers_data else None,
-        "most_assigned":  max(action_owners, key=action_owners.get) if action_owners else None,
-        "most_decisive":  max(decision_makers, key=decision_makers.get) if decision_makers else None,
+        "most_assigned": max(action_owners, key=action_owners.get) if action_owners else None,
+        "most_decisive": max(decision_makers, key=decision_makers.get) if decision_makers else None,
     }
 
 
 # ── Sentiment segment lookup (click-through) ─────────────────────────────────
 
+_POSITIVE_RE = re.compile(
+    r"\b(great|excellent|perfect|agree|agreed|good|yes|approved|confirmed|"
+    r"congratulations|well done|fantastic|wonderful|happy|pleased|love|enjoy)\b",
+    re.IGNORECASE,
+)
+_NEGATIVE_RE = re.compile(
+    r"\b(no|not|never|problem|issue|concern|worried|worried|disagree|"
+    r"blocked|delay|delayed|failed|failure|wrong|difficult|frustrated|"
+    r"unfortunately|risk|risky|doubt|bad|poor|terrible|hate|reject|rejected)\b",
+    re.IGNORECASE,
+)
+
+
 def get_segments_for_speaker(
-    session_id: str,
+    session: dict,
     speaker: str,
     sentiment_hint: str | None = None,
 ) -> list[dict]:
     """
-    Return all transcript segments for a given speaker, enriched with their
-    sequential index so the frontend can scroll the transcript viewer to the
-    correct position.
-
-    Parameters
-    ----------
-    session_id      : Target session.
-    speaker         : Exact speaker name as it appears in segments.
-    sentiment_hint  : Optional — 'positive', 'negative', 'neutral'.
-                      When supplied, segments are annotated with a
-                      rough sentiment label derived from keyword matching
-                      so the frontend can highlight the flagged ones.
-
-    Returns
-    -------
-    List of dicts:
-        { index, speaker, text, timestamp, sentiment }
-    where `index` is the 0-based position in session["segments"] — the
-    transcript viewer can scroll to segment[index] directly.
+    Return all transcript segments for a given speaker in an already-fetched,
+    ownership-verified session, enriched with sequential index + sentiment.
     """
-    session = _store.get(session_id)
     if not session:
         return []
-
-    _POSITIVE_RE = re.compile(
-        r"\b(great|excellent|perfect|agree|agreed|good|yes|approved|confirmed|"
-        r"congratulations|well done|fantastic|wonderful|happy|pleased|love|enjoy)\b",
-        re.IGNORECASE,
-    )
-    _NEGATIVE_RE = re.compile(
-        r"\b(no|not|never|problem|issue|concern|worried|worried|disagree|"
-        r"blocked|delay|delayed|failed|failure|wrong|difficult|frustrated|"
-        r"unfortunately|risk|risky|doubt|bad|poor|terrible|hate|reject|rejected)\b",
-        re.IGNORECASE,
-    )
 
     results = []
     for idx, seg in enumerate(session.get("segments", [])):
@@ -475,7 +416,6 @@ def get_segments_for_speaker(
         if not text:
             continue
 
-        # Derive a simple sentiment label from keyword density
         pos = len(_POSITIVE_RE.findall(text))
         neg = len(_NEGATIVE_RE.findall(text))
         if pos > neg:
@@ -486,26 +426,24 @@ def get_segments_for_speaker(
             sentiment = "neutral"
 
         results.append({
-            "index":     idx,
-            "speaker":   seg_speaker,
-            "text":      text,
+            "index": idx,
+            "speaker": seg_speaker,
+            "text": text,
             "timestamp": seg.get("timestamp"),
             "sentiment": sentiment,
         })
 
-    # If a sentiment_hint was given, sort matching segments first
     if sentiment_hint:
         results.sort(key=lambda s: (0 if s["sentiment"] == sentiment_hint else 1, s["index"]))
 
     return results
 
 
-def get_segment_at_index(session_id: str, index: int) -> dict | None:
+def get_segment_at_index(session: dict, index: int) -> dict | None:
     """
-    Return the single segment at a given index with its surrounding context
-    (the 2 segments before and after) for the click-through transcript view.
+    Return the single segment at a given index (in an already-fetched,
+    ownership-verified session) with its surrounding context.
     """
-    session = _store.get(session_id)
     if not session:
         return None
 
@@ -514,11 +452,11 @@ def get_segment_at_index(session_id: str, index: int) -> dict | None:
         return None
 
     context_start = max(0, index - 2)
-    context_end   = min(len(segs), index + 3)
+    context_end = min(len(segs), index + 3)
 
     return {
         "target_index": index,
-        "target":       {**segs[index], "index": index},
+        "target": {**segs[index], "index": index},
         "context": [
             {**segs[i], "index": i, "is_target": i == index}
             for i in range(context_start, context_end)
@@ -529,49 +467,39 @@ def get_segment_at_index(session_id: str, index: int) -> dict | None:
 
 # ── Deadline proximity alerts ─────────────────────────────────────────────────
 
-def get_deadline_alerts(session_id: str, warning_days: int = 3) -> Optional[dict]:
+def get_deadline_alerts(session: dict, warning_days: int = 3) -> Optional[dict]:
     """
-    Scan action items for upcoming or overdue deadlines.
-
-    Parses common date patterns from by_when strings:
-      - ISO dates: 2024-01-15
-      - Short forms: Jan 15, January 15, 15/01/2024, etc.
-      - Relative: 'next Friday', 'end of week' (flagged as approximate)
-
-    Returns items grouped into: overdue | due_soon | upcoming | no_date | unparseable.
+    Scan action items for upcoming or overdue deadlines, for an already
+    fetched, ownership-verified session.
     """
     from datetime import date
-    import re
 
-    session = _store.get(session_id)
     if not session or not session.get("extraction"):
         return None
 
-    statuses  = get_action_item_statuses(session_id)
-    today     = date.today()
-    threshold = today + timedelta(days=warning_days)
+    statuses = get_action_item_statuses(session["id"])
+    today = date.today()
 
-    overdue:     list[dict] = []
-    due_soon:    list[dict] = []
-    upcoming:    list[dict] = []
-    no_date:     list[dict] = []
+    overdue: list[dict] = []
+    due_soon: list[dict] = []
+    upcoming: list[dict] = []
+    no_date: list[dict] = []
     unparseable: list[dict] = []
 
     for item in session["extraction"].get("action_items", []):
-        item_id    = item.get("id")
-        by_when    = (item.get("by_when") or "").strip()
+        item_id = item.get("id")
+        by_when = (item.get("by_when") or "").strip()
         status_val = statuses.get(item_id, {}).get("status", "pending")
 
-        # Skip done items — no point alerting on completed tasks
         if status_val == "done":
             continue
 
         base = {
-            "id":      item_id,
-            "what":    item.get("what", ""),
-            "who":     item.get("who"),
+            "id": item_id,
+            "what": item.get("what", ""),
+            "who": item.get("who"),
             "by_when": by_when,
-            "status":  status_val,
+            "status": status_val,
         }
 
         if not by_when:
@@ -584,7 +512,7 @@ def get_deadline_alerts(session_id: str, warning_days: int = 3) -> Optional[dict
             continue
 
         days_delta = (parsed - today).days
-        base["parsed_date"]  = parsed.isoformat()
+        base["parsed_date"] = parsed.isoformat()
         base["days_from_now"] = days_delta
 
         if days_delta < 0:
@@ -597,35 +525,29 @@ def get_deadline_alerts(session_id: str, warning_days: int = 3) -> Optional[dict
             base["urgency"] = "upcoming"
             upcoming.append(base)
 
-    # Sort each bucket
     overdue.sort(key=lambda x: x["parsed_date"])
     due_soon.sort(key=lambda x: x["parsed_date"])
     upcoming.sort(key=lambda x: x["parsed_date"])
 
     return {
-        "session_id":    session_id,
-        "warning_days":  warning_days,
-        "checked_at":    _now_iso(),
-        "overdue":       overdue,
-        "due_soon":      due_soon,
-        "upcoming":      upcoming,
-        "no_date":       no_date,
-        "unparseable":   unparseable,
-        "alert_count":   len(overdue) + len(due_soon),
+        "session_id": session["id"],
+        "warning_days": warning_days,
+        "checked_at": _now_iso(),
+        "overdue": overdue,
+        "due_soon": due_soon,
+        "upcoming": upcoming,
+        "no_date": no_date,
+        "unparseable": unparseable,
+        "alert_count": len(overdue) + len(due_soon),
     }
 
 
 def _parse_date(text: str, today) -> Optional["date"]:
-    """
-    Try to parse a human-readable date string into a date object.
-    Returns None if unparseable.
-    """
+    """Try to parse a human-readable date string into a date object."""
     from datetime import date
-    import re
 
     text = text.strip().lower()
 
-    # ISO: 2024-01-15
     m = re.match(r"(\d{4})-(\d{2})-(\d{2})", text)
     if m:
         try:
@@ -633,18 +555,16 @@ def _parse_date(text: str, today) -> Optional["date"]:
         except ValueError:
             pass
 
-    # DD/MM/YYYY or MM/DD/YYYY — try both
     m = re.match(r"(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{2,4})", text)
     if m:
         a, b, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
         y = y + 2000 if y < 100 else y
-        for d_try in [(a, b), (b, a)]:  # try both DD/MM and MM/DD
+        for d_try in [(a, b), (b, a)]:
             try:
                 return date(y, d_try[1], d_try[0])
             except ValueError:
                 pass
 
-    # "Jan 15" / "January 15" / "15 Jan" etc.
     months = {
         "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
         "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
@@ -665,9 +585,8 @@ def _parse_date(text: str, today) -> Optional["date"]:
     if month_str and day_str:
         mon = months.get(month_str[:3])
         if mon:
-            yr  = int(year_str) if year_str else today.year
+            yr = int(year_str) if year_str else today.year
             day = int(day_str)
-            # If the date has passed this year, assume next year
             try:
                 d = date(yr, mon, day)
                 if d < today and not year_str:
@@ -676,11 +595,10 @@ def _parse_date(text: str, today) -> Optional["date"]:
             except ValueError:
                 pass
 
-    # Relative: "end of week", "next friday", "this friday", "eow", "eom"
     weekdays = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
                 "friday": 4, "saturday": 5, "sunday": 6}
     if "eow" in text or "end of week" in text or "end-of-week" in text:
-        days_ahead = 4 - today.weekday()  # next Friday
+        days_ahead = 4 - today.weekday()
         if days_ahead < 0:
             days_ahead += 7
         return today + timedelta(days=days_ahead)

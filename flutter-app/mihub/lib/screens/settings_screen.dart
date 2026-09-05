@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_notifier.dart';
 import '../widgets/status_badge.dart';
@@ -10,7 +11,11 @@ class SettingsScreen extends StatefulWidget {
   /// without needing an extra network call to list sessions.
   final List<String> sessionIds;
 
-  const SettingsScreen({super.key, this.sessionIds = const []});
+  /// Called after the user confirms logout, so main.dart can flip back to
+  /// the login screen and drop all in-memory session state.
+  final VoidCallback? onLoggedOut;
+
+  const SettingsScreen({super.key, this.sessionIds = const [], this.onLoggedOut});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -154,6 +159,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _sectionLabel('Account'),
+            _buildAccountCard(),
+            const SizedBox(height: 28),
             _sectionLabel('Appearance'),
             _buildThemeCard(),
             const SizedBox(height: 28),
@@ -182,6 +190,110 @@ class _SettingsScreenState extends State<SettingsScreen> {
             fontSize: 11,
             fontWeight: FontWeight.w700,
             letterSpacing: 1.2),
+      ),
+    );
+  }
+
+  // ── Account card ───────────────────────────────────────────────────────────
+
+  Future<void> _confirmLogout() async {
+    final t = AppTheme.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: t.bgCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Log Out', style: TextStyle(color: t.textPrimary, fontSize: 16)),
+        content: Text(
+          "You'll need to sign in again to access your meeting history.",
+          style: TextStyle(color: t.textSecondary, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(backgroundColor: t.accentRed),
+              child: const Text('Log Out')),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await AuthService.logout();
+    if (!mounted) return;
+
+    // Pop back to the app shell first, then flip main.dart's auth state so
+    // the login screen replaces everything (including this settings screen).
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    widget.onLoggedOut?.call();
+  }
+
+  Widget _buildAccountCard() {
+    final t = AppTheme.of(context);
+    final user = AuthService.currentUser;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: t.bgCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: t.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: t.accent.withOpacity(0.15),
+                child: Text(
+                  (user?.displayName?.isNotEmpty == true
+                          ? user!.displayName![0]
+                          : (user?.email.isNotEmpty == true ? user!.email[0] : '?'))
+                      .toUpperCase(),
+                  style: TextStyle(
+                      color: t.accent, fontWeight: FontWeight.w700, fontSize: 16),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user?.displayName?.isNotEmpty == true
+                          ? user!.displayName!
+                          : (user?.email ?? 'Signed in'),
+                      style: TextStyle(
+                          color: t.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600),
+                    ),
+                    if (user?.displayName?.isNotEmpty == true)
+                      Text(user!.email,
+                          style: TextStyle(color: t.textMuted, fontSize: 12)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _confirmLogout,
+              icon: Icon(Icons.logout, size: 18, color: t.accentRed),
+              label: Text('Log Out', style: TextStyle(color: t.accentRed)),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: t.accentRed.withOpacity(0.4)),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -369,10 +481,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   child: Column(
                     children: [
+                      _hintRow('Render (deployed)', 'https://your-app.onrender.com'),
                       _hintRow('Tailscale', 'http://100.95.213.57:8000'),
                       _hintRow('iOS simulator', 'http://localhost:8000'),
                       _hintRow('Physical device', 'http://<LAN-IP>:8000'),
-                      _hintRow('AWS/deployed', 'https://your-domain.com'),
                     ],
                   ),
                 ),

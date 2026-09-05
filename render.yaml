@@ -1,0 +1,54 @@
+# render.yaml — Render Blueprint for Meeting Intelligence Hub backend.
+#
+# Deploy in one click:
+#   1. Push this repo to GitHub.
+#   2. In the Render dashboard: New -> Blueprint -> pick this repo.
+#   3. Render reads this file and provisions:
+#        - a free Postgres database ("mihub-db")
+#        - a free web service ("mihub-backend") running the FastAPI app
+#      and automatically wires DATABASE_URL from the database into the
+#      web service's environment.
+#   4. You still need to set GROQ_API_KEY yourself (see backend/README.md)
+#      — get a free key at https://console.groq.com — and JWT_SECRET,
+#      which Render will auto-generate for you (see generateValue below).
+#
+# Free-tier notes:
+#   - The web service spins down after ~15 minutes of inactivity and takes
+#     ~30-60s to wake back up on the next request. Postgres free tier is
+#     limited (see Render's docs for current expiry/storage limits).
+#   - This is fine for personal projects/demos; for production traffic,
+#     upgrade both the database and the web service plan.
+
+databases:
+  - name: mihub-db
+    plan: free
+    postgresMajorVersion: 16
+
+services:
+  - type: web
+    name: mihub-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: "pip install -r requirements.txt && python -m spacy download en_core_web_sm"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mihub-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRE_MINUTES
+        value: "10080"
+      - key: EXTRACTOR
+        value: "llm"
+      - key: GROQ_API_KEY
+        sync: false          # set manually in the Render dashboard (free key from console.groq.com)
+      - key: CORS_ORIGINS
+        value: "*"           # tighten to your deployed web app's exact origin once you have it
+      - key: SESSION_TTL_HOURS
+        value: "24"
+      - key: PYTHON_VERSION
+        value: "3.11.9"

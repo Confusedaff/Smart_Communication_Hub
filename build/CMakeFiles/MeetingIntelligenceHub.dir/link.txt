@@ -1,0 +1,3 @@
+"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E rm -f CMakeFiles\MeetingIntelligenceHub.dir/objects.a
+C:\msys64\ucrt64\bin\ar.exe qc CMakeFiles\MeetingIntelligenceHub.dir/objects.a @CMakeFiles\MeetingIntelligenceHub.dir\objects1.rsp
+C:\msys64\ucrt64\bin\g++.exe -g -mwindows -Wl,--whole-archive CMakeFiles\MeetingIntelligenceHub.dir/objects.a -Wl,--no-whole-archive -o MeetingIntelligenceHub.exe -Wl,--out-implib,libMeetingIntelligenceHub.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\MeetingIntelligenceHub.dir\linkLibs.rsp

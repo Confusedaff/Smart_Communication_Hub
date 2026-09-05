@@ -5,3 +5,15 @@ python-multipart>=0.0.9
 reportlab>=4.2.0
 spacy>=3.7.0
 python-dotenv>=1.0.0
+
+# Database (Postgres — required for persistent users + per-user session history)
+asyncpg>=0.29.0
+
+# Auth (JWT + password hashing)
+pyjwt>=2.9.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.1,<5.0.0
+email-validator>=2.2.0
+
+# Rate limiting (optional but recommended)
+slowapi>=0.1.9
