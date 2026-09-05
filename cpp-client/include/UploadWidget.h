@@ -98,5 +98,5 @@ private:
     bool    m_uploading         = false;
     bool    m_dragging          = false;
     bool    m_isOnline          = false;
-    QString m_currentBackendUrl = "http://localhost:8000";
+    QString m_currentBackendUrl = "https://mihub-backend.onrender.com";
 };

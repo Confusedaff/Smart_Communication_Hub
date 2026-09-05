@@ -30,7 +30,7 @@ class _UploadScreenState extends State<UploadScreen>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnim;
   final TextEditingController _urlController =
-      TextEditingController(text: 'http://100.95.213.57:8000');
+      TextEditingController(text: ApiService.baseUrl);
 
   @override
   void initState() {
@@ -527,6 +527,7 @@ class _UploadScreenState extends State<UploadScreen>
             spacing: 16,
             runSpacing: 4,
             children: [
+              _connectionHint(t, 'Render (cloud)', 'https://mihub-backend.onrender.com'),
               _connectionHint(t, 'Tailscale',  'http://100.95.213.57:8000'),
               _connectionHint(t, 'Emulator',   'http://10.0.2.2:8000'),
               _connectionHint(t, 'Device LAN', 'http://<LAN-IP>:8000'),

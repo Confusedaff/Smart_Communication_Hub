@@ -1,4 +1,4 @@
-const BASE_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) || "http://localhost:8000";
+const BASE_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) || "https://mihub-backend.onrender.com";
 
 const TOKEN_KEY = "mih_auth_token";
 

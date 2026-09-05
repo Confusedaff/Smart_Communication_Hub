@@ -6,7 +6,7 @@ import '../models/extraction_model.dart';
 import '../models/chat_model.dart';
 
 class ApiService {
-  static String _baseUrl = 'http://100.95.213.57:8000'; // Android emulator default
+  static String _baseUrl = 'https://mihub-backend.onrender.com'; // Render-hosted backend default
   static String? _authToken;
 
   /// Fired once, globally, whenever any request comes back 401. Wired up

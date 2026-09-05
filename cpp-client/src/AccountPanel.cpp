@@ -175,6 +175,7 @@ void AccountPanel::setupUi() {
 
     QSettings settings("MIH", "MeetingIntelligenceHub");
     QStringList saved = settings.value("savedUrls", QStringList{
+        "https://mihub-backend.onrender.com",
         "http://localhost:8000",
         "http://127.0.0.1:8000"
     }).toStringList();

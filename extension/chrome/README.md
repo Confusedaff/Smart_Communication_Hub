@@ -118,7 +118,7 @@ Before your first meeting, configure the extension with your backend URL.
 
    | Field | What to enter | Example |
    |-------|--------------|---------|
-   | **Backend URL** | Address of your running FastAPI server | `http://localhost:8000` |
+   | **Backend URL** | Address of your FastAPI server (pre-filled with the deployed backend) | `https://mihub-backend.onrender.com` |
    | **Language** | Language spoken in your meetings | `English (India)` |
    | **Export Format** | File format for downloads | `WebVTT (.vtt)` — recommended |
    | **Your Name** | Your name for speaker attribution | `Krishnaprasad` |
@@ -265,7 +265,7 @@ GET http://localhost:8000/sessions/a3f9b2c1-.../export/pdf
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| **Backend URL** | Base URL of your running FastAPI server. Remove trailing slash. | `http://localhost:8000` |
+| **Backend URL** | Base URL of your FastAPI server. Remove trailing slash. | `https://mihub-backend.onrender.com` (deployed) or `http://localhost:8000` (local) |
 | **Language** | BCP-47 language code for speech recognition. Affects accuracy significantly — choose the language your meetings are conducted in. | `en-US` |
 | **Export Format** | Which format to use when clicking **Send to Hub** and for auto-save on stop. Download buttons always offer both formats regardless. | `vtt` |
 | **Your Name** | Your display name. Used as a speaker attribution fallback when the DOM scraper cannot detect who is speaking (e.g. you are the only person talking). | — |

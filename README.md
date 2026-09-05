@@ -465,7 +465,7 @@ All four frontends can run simultaneously against the same backend. Sessions cre
 |----------|----------|---------|-------------|
 | `GROQ_API_KEY` | No | — | Groq API key for cloud LLM. Falls back to Ollama if absent |
 | `OLLAMA_HOST` | No | `http://localhost:11434` | Ollama endpoint for local LLM |
-| `OLLAMA_MODEL` | No | `gemma2:9b` | Ollama model to use |
+| `OLLAMA_MODEL` | No | `gemma3:4b` | Ollama model to use |
 | `EXTRACTOR` | No | `llm` | Extraction engine: `llm` or `nlp` |
 | `SESSION_TTL_HOURS` | No | `24` | Hours before idle sessions are auto-evicted |
 | `SESSION_DB_PATH` | No | `sessions.db` | SQLite database file path |

@@ -451,7 +451,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: t.textPrimary),
                   decoration: const InputDecoration(
                     labelText: 'Backend URL',
-                    hintText: 'http://100.95.213.57:8000',
+                    hintText: 'https://mihub-backend.onrender.com',
                   ),
                   onSubmitted: (_) => _saveUrl(),
                 ),
@@ -481,7 +481,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   child: Column(
                     children: [
-                      _hintRow('Render (deployed)', 'https://your-app.onrender.com'),
+                      _hintRow('Render (deployed)', 'https://mihub-backend.onrender.com'),
                       _hintRow('Tailscale', 'http://100.95.213.57:8000'),
                       _hintRow('iOS simulator', 'http://localhost:8000'),
                       _hintRow('Physical device', 'http://<LAN-IP>:8000'),

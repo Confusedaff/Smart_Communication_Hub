@@ -89,11 +89,11 @@ python --version   # should be 3.10+
 2. Pull a model:
 
 ```bash
-ollama pull gemma2:9b       # default — good balance of speed/quality
+ollama pull gemma3:4b       # default — good balance of speed/quality
 # OR
 ollama pull llama3.2        # smaller, faster
 ollama pull mistral         # alternative
-ollama pull phi3            # lightest option
+ollama pull gemma3:1b       # lightest option
 ```
 
 3. Start the Ollama server:
@@ -186,7 +186,7 @@ GROQ_API_KEY=gsk_your_key_here
 # Option B: Ollama (local, offline)
 # Leave GROQ_API_KEY blank or remove it to use Ollama automatically
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=gemma2:9b
+OLLAMA_MODEL=gemma3:4b
 OLLAMA_TIMEOUT=600
 
 # ── Extractor Engine ───────────────────────────────────────────────────
@@ -201,7 +201,7 @@ SESSION_TTL_HOURS=24          # auto-evict sessions idle for this long
 CORS_ORIGINS=*                # comma-separated allowed origins, or * for all
 
 # ── Optional Groq model override ───────────────────────────────────────
-# GROQ_MODEL=llama-3.3-70b-versatile
+# GROQ_MODEL=openai/gpt-oss-120b
 ```
 
 > **Which LLM backend is active?** The backend automatically picks **Groq** if `GROQ_API_KEY` is set, otherwise falls back to **Ollama**. If Groq returns a long `Retry-After` (e.g. daily quota exhausted), it fails fast immediately instead of hanging, and falls back to Ollama.
@@ -220,9 +220,9 @@ All configuration is done through the `.env` file in the `backend/` directory. F
 | `JWT_SECRET` | _(random per-process)_ | Signs login tokens. Set explicitly in production or every restart logs everyone out. |
 | `JWT_EXPIRE_MINUTES` | `10080` (7 days) | How long an access token stays valid. |
 | `GROQ_API_KEY` | _(empty)_ | Your Groq cloud API key. Get one free at [console.groq.com](https://console.groq.com). If set, Groq is used instead of Ollama. |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model to use. Other options: `llama-3.1-8b-instant`, `mixtral-8x7b-32768`. |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Groq model to use. Other options: `openai/gpt-oss-20b` (faster/cheaper), `qwen/qwen3.6-27b` (multimodal). |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | URL where Ollama is running. Change if Ollama is on a different machine or port. |
-| `OLLAMA_MODEL` | `gemma2:9b` | Local Ollama model to use. Must be pulled first with `ollama pull <model>`. |
+| `OLLAMA_MODEL` | `gemma3:4b` | Local Ollama model to use. Must be pulled first with `ollama pull <model>`. |
 | `OLLAMA_TIMEOUT` | `600` | Seconds before an Ollama request times out. Increase for slower hardware or larger models. |
 | `EXTRACTOR` | `llm` | Default extraction engine. `"llm"` = Groq/Ollama, `"nlp"` = spaCy offline. Can be overridden per-request via `?engine=`. |
 | `SESSION_TTL_HOURS` | `24` | Sessions not accessed within this window are automatically evicted from Postgres. |
@@ -239,7 +239,7 @@ EXTRACTOR=llm
 **Ollama only (fully offline):**
 ```bash
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=gemma2:9b
+OLLAMA_MODEL=gemma3:4b
 OLLAMA_TIMEOUT=600
 EXTRACTOR=llm
 ```
@@ -253,7 +253,7 @@ EXTRACTOR=nlp
 ```bash
 GROQ_API_KEY=gsk_your_key_here
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=gemma2:9b
+OLLAMA_MODEL=gemma3:4b
 EXTRACTOR=llm
 ```
 
@@ -934,7 +934,7 @@ If the active backend fails during a request, it **automatically retries on the 
 | Backend | Extraction | Chat |
 |---|---|---|
 | Groq | ~5 seconds | ~3 seconds |
-| Ollama (gemma2:9b) | ~90 seconds | ~25 seconds |
+| Ollama (gemma3:4b) | ~90 seconds | ~25 seconds |
 
 These are estimates — actual times depend on your hardware and model size. The backend tracks a rolling average of recent call durations and uses those for displayed estimates once enough calls have been made.
 
@@ -944,13 +944,13 @@ These are estimates — actual times depend on your hardware and model size. The
 
 | Model | Size | Speed | Quality |
 |---|---|---|---|
-| `phi3` | ~2GB | Fastest | Good |
-| `llama3.2` | ~2GB | Fast | Good |
-| `gemma2:9b` | ~5GB | Medium | Better |
+| `llama3.2` | ~2GB | Fastest | Good |
+| `gemma3:4b` | ~3.3GB | Fast | Good — default |
 | `mistral` | ~4GB | Medium | Better |
-| `llama3.1` | ~8GB | Slower | Best |
+| `gemma3:12b` | ~8GB | Slower | Better |
+| `llama3.3` | ~43GB | Slowest | Best |
 
-**For Groq**, the default is `llama-3.3-70b-versatile`. Override with `GROQ_MODEL` in `.env`.
+**For Groq**, the default is `openai/gpt-oss-120b`. Override with `GROQ_MODEL` in `.env`.
 
 ---
 
@@ -1065,8 +1065,8 @@ The request will fall back to Ollama if configured, or return a 503 error to the
 The default model may be too large for your hardware. Try a smaller one:
 
 ```bash
-ollama pull phi3
-# Then update OLLAMA_MODEL=phi3 in .env
+ollama pull gemma3:1b
+# Then update OLLAMA_MODEL=gemma3:1b in .env
 ```
 
 Or switch to Groq (free at [console.groq.com](https://console.groq.com)):

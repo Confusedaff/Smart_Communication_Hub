@@ -72,7 +72,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
   static const int _maxReconnectAttempts = 5;
   static const Duration _reconnectInterval = Duration(seconds: 2);
   final TextEditingController _urlController =
-      TextEditingController(text: 'http://100.95.213.57:8000');
+      TextEditingController(text: ApiService.baseUrl);
 
   @override
   void initState() {
@@ -804,6 +804,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
           spacing: 16,
           runSpacing: 4,
           children: [
+            _hint(t, 'Render (cloud)', 'https://mihub-backend.onrender.com'),
             _hint(t, 'Tailscale', 'http://100.95.213.57:8000'),
             _hint(t, 'Emulator', 'http://10.0.2.2:8000'),
             _hint(t, 'Device LAN', 'http://<LAN-IP>:8000'),

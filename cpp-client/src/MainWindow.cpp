@@ -32,7 +32,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     }
 
     QSettings settings("MIH", "MeetingIntelligenceHub");
-    m_currentBackendUrl = settings.value("backendUrl", "http://localhost:8000").toString();
+    m_currentBackendUrl = settings.value("backendUrl", "https://mihub-backend.onrender.com").toString();
 
     m_api = new ApiClient(m_currentBackendUrl, this);
 

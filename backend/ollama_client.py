@@ -50,11 +50,11 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-DEFAULT_MODEL   = os.getenv("OLLAMA_MODEL", "gemma2:9b")
+DEFAULT_MODEL   = os.getenv("OLLAMA_MODEL", "gemma3:4b")
 TIMEOUT         = float(os.getenv("OLLAMA_TIMEOUT", "600"))
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL   = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 

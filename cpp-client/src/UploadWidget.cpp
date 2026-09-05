@@ -69,7 +69,7 @@ SettingsDialog::SettingsDialog(const QString& currentUrl, QWidget* parent)
     layout->addWidget(urlLabel);
 
     m_urlEdit = new QLineEdit(currentUrl, this);
-    m_urlEdit->setPlaceholderText("http://localhost:8000");
+    m_urlEdit->setPlaceholderText("https://mihub-backend.onrender.com");
     layout->addWidget(m_urlEdit);
 
     // Saved list
@@ -86,6 +86,7 @@ SettingsDialog::SettingsDialog(const QString& currentUrl, QWidget* parent)
     // Load saved addresses
     QSettings settings("MIH", "MeetingIntelligenceHub");
     QStringList saved = settings.value("savedUrls", QStringList{
+        "https://mihub-backend.onrender.com",
         "http://localhost:8000",
         "http://127.0.0.1:8000"
     }).toStringList();

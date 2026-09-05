@@ -10,7 +10,7 @@
 class ApiClient : public QObject {
     Q_OBJECT
 public:
-    explicit ApiClient(const QString& baseUrl = "http://localhost:8000", QObject* parent = nullptr);
+    explicit ApiClient(const QString& baseUrl = "https://mihub-backend.onrender.com", QObject* parent = nullptr);
 
     void setBaseUrl(const QString& url);
     QString baseUrl() const { return m_baseUrl; }

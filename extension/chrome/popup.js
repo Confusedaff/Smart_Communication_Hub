@@ -55,7 +55,7 @@ async function init() {
   settings = await loadSettings();
 
   // Populate settings UI
-  backendUrlIn.value  = settings.backendUrl  || 'http://localhost:8000';
+  backendUrlIn.value  = settings.backendUrl  || 'https://mihub-backend.onrender.com';
   languageIn.value    = settings.language    || 'en-US';
   exportFmtIn.value   = settings.exportFormat || 'vtt';
   speakerNameIn.value = settings.speakerName  || '';
@@ -268,7 +268,7 @@ copyBtn.addEventListener('click', async () => {
 // ── Upload to backend ─────────────────────────────────────────────────────────
 
 uploadBtn.addEventListener('click', async () => {
-  const backendUrl = settings.backendUrl || 'http://localhost:8000';
+  const backendUrl = settings.backendUrl || 'https://mihub-backend.onrender.com';
   if (!backendUrl) {
     showToast('Set backend URL in settings first', 'error');
     settingsPanel.classList.add('open');

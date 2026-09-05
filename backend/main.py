@@ -16,7 +16,7 @@ Extractor engine:
     EXTRACTOR=llm     → LLM (Ollama or Groq)   [default]
 
 LLM backend:
-    OLLAMA_MODEL=gemma2:9b
+    OLLAMA_MODEL=gemma3:4b
     GROQ_API_KEY=gsk_...        ← free at console.groq.com
     LLM_BACKEND=auto
 
