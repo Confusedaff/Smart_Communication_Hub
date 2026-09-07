@@ -44,6 +44,7 @@ class ChatResponse {
   final List<Citation> citations;
   final String sessionId;
   final ChatTiming? timing;
+  final String? mode;
 
   ChatResponse({
     required this.question,
@@ -51,6 +52,7 @@ class ChatResponse {
     required this.citations,
     required this.sessionId,
     this.timing,
+    this.mode,
   });
 
   factory ChatResponse.fromJson(Map<String, dynamic> json) {
@@ -64,6 +66,7 @@ class ChatResponse {
       timing: json['timing'] != null
           ? ChatTiming.fromJson(json['timing'])
           : null,
+      mode: json['mode'],
     );
   }
 }
@@ -72,11 +75,13 @@ class Citation {
   final String speaker;
   final String excerpt;
   final String timestamp;
+  final String? filename;
 
   Citation({
     required this.speaker,
     required this.excerpt,
     required this.timestamp,
+    this.filename,
   });
 
   factory Citation.fromJson(Map<String, dynamic> json) {
@@ -84,6 +89,7 @@ class Citation {
       speaker: json['speaker'] ?? '',
       excerpt: json['excerpt'] ?? '',
       timestamp: json['timestamp'] ?? '',
+      filename: json['filename'],
     );
   }
 
@@ -91,6 +97,7 @@ class Citation {
         'speaker': speaker,
         'excerpt': excerpt,
         'timestamp': timestamp,
+        if (filename != null) 'filename': filename,
       };
 }
 

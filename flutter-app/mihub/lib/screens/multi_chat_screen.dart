@@ -29,6 +29,10 @@ class _MultiChatScreenState extends State<MultiChatScreen> {
   // null = search ALL sessions
   Set<String>? _selectedIds;
 
+  // "document" = grounded/strict (default); "general" = blend with the
+  // model's broader knowledge when the files don't fully answer.
+  String _answerMode = 'document';
+
   @override
   void dispose() {
     _inputController.dispose();
@@ -48,7 +52,11 @@ class _MultiChatScreenState extends State<MultiChatScreen> {
 
     try {
       final ids = _selectedIds?.toList();
-      final result = await ApiService.sendMultiChat(question, sessionIds: ids);
+      final result = await ApiService.sendMultiChat(
+        question,
+        sessionIds: ids,
+        mode: _answerMode,
+      );
       if (mounted) {
         setState(() {
           _messages.add(_MultiChatMessage.assistant(result));
@@ -102,6 +110,49 @@ class _MultiChatScreenState extends State<MultiChatScreen> {
     );
   }
 
+  /// Small pill toggle: "Grounded" (strict, files-only) vs "General" (blends
+  /// files with the model's broader knowledge).
+  Widget _buildAnswerModeToggle(AppThemeTokens t) {
+    Widget pill(String label, String value) {
+      final active = _answerMode == value;
+      return GestureDetector(
+        onTap: () => setState(() => _answerMode = value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          decoration: BoxDecoration(
+            color: active ? t.accent : Colors.transparent,
+            borderRadius: BorderRadius.circular(100),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: active ? t.onAccent : t.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: t.bgElevated,
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: t.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          pill('🎯', 'document'),
+          pill('🌐', 'general'),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
@@ -123,6 +174,8 @@ class _MultiChatScreenState extends State<MultiChatScreen> {
           ],
         ),
         actions: [
+          _buildAnswerModeToggle(t),
+          const SizedBox(width: 6),
           IconButton(
             icon: Icon(Icons.tune_rounded, size: 20, color: t.textSecondary),
             onPressed: () => _showSessionPicker(context),

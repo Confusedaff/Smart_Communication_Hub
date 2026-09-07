@@ -4,17 +4,21 @@ import LLMTimingBadge from "./LLMTimingBadge";
 
 const STORAGE_KEY = (id) => `mih_chat_${id}`;
 const MULTI_STORAGE_KEY = "mih_chat_multi";
+const ANSWER_MODE_KEY = (id) => `mih_answer_mode_${id}`;
 
-const WELCOME = {
+const WELCOME = (docType) => ({
   role: "assistant",
-  content: "Ask me anything about this transcript — who said what, what was decided, or any action items.",
+  content:
+    docType === "document"
+      ? "Ask me anything about this document — key facts, sections, or how to act on it (e.g. \"how should I prepare for this?\")."
+      : "Ask me anything about this transcript — who said what, what was decided, or any action items.",
   citations: [],
-};
+});
 
 const MULTI_WELCOME = {
   role: "assistant",
   content:
-    "Ask me anything across all your transcripts — I'll search every meeting and cite which one each answer came from.",
+    "Ask me anything across all your files — I'll search everything and cite which one each answer came from.",
   citations: [],
 };
 
@@ -32,7 +36,39 @@ function getCachedMessages(key) {
   return null;
 }
 
-export default function ChatPanel({ sessionId, allSessions = [] }) {
+function getCachedAnswerMode(id, fallback = "document") {
+  try {
+    const raw = localStorage.getItem(ANSWER_MODE_KEY(id));
+    if (raw === "document" || raw === "general") return raw;
+  } catch (_) { /* ignore */ }
+  return fallback;
+}
+
+/** Small reusable pill toggle: "Grounded" (document mode) vs "General" (blended). */
+function AnswerModeToggle({ mode, onChange, disabled }) {
+  return (
+    <div className="answer-mode-toggle" title="Grounded answers strictly from the file · General also draws on broader knowledge">
+      <button
+        type="button"
+        className={`answer-mode-btn ${mode === "document" ? "active" : ""}`}
+        onClick={() => onChange("document")}
+        disabled={disabled}
+      >
+        🎯 Grounded
+      </button>
+      <button
+        type="button"
+        className={`answer-mode-btn ${mode === "general" ? "active" : ""}`}
+        onClick={() => onChange("general")}
+        disabled={disabled}
+      >
+        🌐 General
+      </button>
+    </div>
+  );
+}
+
+export default function ChatPanel({ sessionId, allSessions = [], docType = "meeting" }) {
   // "single" = chat about this session only; "multi" = cross-session RAG
   const [mode, setMode] = useState("single");
 
@@ -44,13 +80,13 @@ export default function ChatPanel({ sessionId, allSessions = [] }) {
           className={`chat-mode-btn ${mode === "single" ? "active" : ""}`}
           onClick={() => setMode("single")}
         >
-          💬 This transcript
+          💬 This file
         </button>
         <button
           className={`chat-mode-btn ${mode === "multi" ? "active" : ""}`}
           onClick={() => setMode("multi")}
         >
-          🌐 All transcripts
+          🌐 All files
           {allSessions.length > 0 && (
             <span className="chat-mode-count">{allSessions.length}</span>
           )}
@@ -58,7 +94,7 @@ export default function ChatPanel({ sessionId, allSessions = [] }) {
       </div>
 
       {mode === "single" ? (
-        <SingleChat sessionId={sessionId} />
+        <SingleChat sessionId={sessionId} docType={docType} />
       ) : (
         <MultiChat allSessions={allSessions} />
       )}
@@ -67,21 +103,23 @@ export default function ChatPanel({ sessionId, allSessions = [] }) {
 }
 
 /* ── Single-session chat (unchanged logic, extracted into sub-component) ── */
-function SingleChat({ sessionId }) {
-  const [messages, setMessages] = useState([WELCOME]);
+function SingleChat({ sessionId, docType }) {
+  const [messages, setMessages] = useState([WELCOME(docType)]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [lastTiming, setLastTiming] = useState(null);
+  const [answerMode, setAnswerMode] = useState(() => getCachedAnswerMode(sessionId));
 
   const activeSessionRef = useRef(sessionId);
   const bottomRef = useRef();
 
   useEffect(() => {
     activeSessionRef.current = sessionId;
-    setMessages([WELCOME]);
+    setMessages([WELCOME(docType)]);
     setInput("");
     setLastTiming(null);
+    setAnswerMode(getCachedAnswerMode(sessionId));
 
     const cached = getCachedMessages(STORAGE_KEY(sessionId));
     if (cached && cached.length > 0) setMessages(cached);
@@ -93,19 +131,19 @@ function SingleChat({ sessionId }) {
         const hist = (data.history || [])
           .filter((h) => h.role === "user" || h.role === "assistant")
           .map((h) => ({ role: h.role, content: h.content, citations: h.citations || [] }));
-        const msgs = [WELCOME, ...hist];
+        const msgs = [WELCOME(docType), ...hist];
         setMessages(msgs);
         saveMessages(STORAGE_KEY(sessionId), msgs);
       })
       .catch(() => {
         if (activeSessionRef.current !== sessionId) return;
         const cached2 = getCachedMessages(STORAGE_KEY(sessionId));
-        setMessages(cached2 && cached2.length > 0 ? cached2 : [WELCOME]);
+        setMessages(cached2 && cached2.length > 0 ? cached2 : [WELCOME(docType)]);
       })
       .finally(() => {
         if (activeSessionRef.current === sessionId) setLoadingHistory(false);
       });
-  }, [sessionId]);
+  }, [sessionId, docType]);
 
   useEffect(() => {
     if (activeSessionRef.current !== sessionId) return;
@@ -117,6 +155,13 @@ function SingleChat({ sessionId }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const changeAnswerMode = (m) => {
+    setAnswerMode(m);
+    try { localStorage.setItem(ANSWER_MODE_KEY(sessionId), m); } catch (_) { /* ignore */ }
+    // Persist as the session's default too, so streaming/other clients pick it up.
+    api.setChatMode(sessionId, m).catch(() => {});
+  };
+
   const send = async () => {
     const q = input.trim();
     if (!q || loading) return;
@@ -124,7 +169,7 @@ function SingleChat({ sessionId }) {
     setMessages((m) => [...m, { role: "user", content: q, citations: [] }]);
     setLoading(true);
     try {
-      const data = await api.chat(sessionId, q);
+      const data = await api.chat(sessionId, q, answerMode);
       setLastTiming(data.timing || null);
       setMessages((m) => [
         ...m,
@@ -147,15 +192,18 @@ function SingleChat({ sessionId }) {
   const clearHistory = async () => {
     await api.clearHistory(sessionId);
     localStorage.removeItem(STORAGE_KEY(sessionId));
-    setMessages([{ role: "assistant", content: "History cleared. Ask me anything about the transcript.", citations: [] }]);
+    setMessages([{ role: "assistant", content: "History cleared. Ask me anything.", citations: [] }]);
     setLastTiming(null);
   };
 
   return (
     <>
       <div className="chat-topbar">
-        <span className="chat-title">💬 Transcript Q&amp;A</span>
+        <span className="chat-title">
+          {docType === "document" ? "📄 Document Q&A" : "💬 Transcript Q&A"}
+        </span>
         <div className="chat-topbar-right">
+          <AnswerModeToggle mode={answerMode} onChange={changeAnswerMode} disabled={loading} />
           <LLMTimingBadge task="chat" />
           <button className="clear-btn" onClick={clearHistory} disabled={loading}>Clear history</button>
         </div>
@@ -165,8 +213,19 @@ function SingleChat({ sessionId }) {
         <MessageList messages={messages} loading={loading} loadingHistory={loadingHistory} bottomRef={bottomRef} />
       </div>
 
-      <ChatInputRow input={input} setInput={setInput} onKey={handleKey} onSend={send} disabled={loading || loadingHistory} />
-      <p className="chat-hint">Press Enter to send · Shift+Enter for newline · history saved in browser</p>
+      <ChatInputRow
+        input={input} setInput={setInput} onKey={handleKey} onSend={send}
+        disabled={loading || loadingHistory}
+        placeholder={
+          docType === "document"
+            ? "Ask about key facts, sections, or how to prepare/act on this…"
+            : "Ask about decisions, action items, or what someone said…"
+        }
+      />
+      <p className="chat-hint">
+        Press Enter to send · Shift+Enter for newline ·{" "}
+        {answerMode === "general" ? "General mode: blends the file with broader knowledge" : "Grounded mode: answers strictly from the file"}
+      </p>
     </>
   );
 }
@@ -182,6 +241,7 @@ function MultiChat({ allSessions }) {
   // Optional: let user scope to a subset of sessions
   const [selectedIds, setSelectedIds] = useState([]); // empty = all
   const [showScope, setShowScope] = useState(false);
+  const [answerMode, setAnswerMode] = useState(() => getCachedAnswerMode("multi"));
   const bottomRef = useRef();
 
   useEffect(() => {
@@ -191,6 +251,11 @@ function MultiChat({ allSessions }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const changeAnswerMode = (m) => {
+    setAnswerMode(m);
+    try { localStorage.setItem(ANSWER_MODE_KEY("multi"), m); } catch (_) { /* ignore */ }
+  };
 
   const toggleSession = (id) => {
     setSelectedIds((prev) =>
@@ -205,7 +270,7 @@ function MultiChat({ allSessions }) {
     setMessages((m) => [...m, { role: "user", content: q, citations: [] }]);
     setLoading(true);
     try {
-      const data = await api.multiChat(q, selectedIds.length > 0 ? selectedIds : null);
+      const data = await api.multiChat(q, selectedIds.length > 0 ? selectedIds : null, answerMode);
       setMessages((m) => [
         ...m,
         {
@@ -236,21 +301,22 @@ function MultiChat({ allSessions }) {
   };
 
   const scopeLabel = selectedIds.length === 0
-    ? `All ${allSessions.length} transcripts`
-    : `${selectedIds.length} of ${allSessions.length} transcripts`;
+    ? `All ${allSessions.length} files`
+    : `${selectedIds.length} of ${allSessions.length} files`;
 
   return (
     <>
       <div className="chat-topbar">
         <span className="chat-title">🌐 Cross-Session Q&amp;A</span>
         <div className="chat-topbar-right">
+          <AnswerModeToggle mode={answerMode} onChange={changeAnswerMode} disabled={loading} />
           <LLMTimingBadge task="chat" />
           {/* Scope picker */}
           <div className="scope-wrap">
             <button
               className={`scope-btn ${showScope ? "active" : ""}`}
               onClick={() => setShowScope((o) => !o)}
-              title="Choose which transcripts to search"
+              title="Choose which files to search"
             >
               📂 {scopeLabel} ▾
             </button>
@@ -289,7 +355,10 @@ function MultiChat({ allSessions }) {
       </div>
 
       <ChatInputRow input={input} setInput={setInput} onKey={handleKey} onSend={send} disabled={loading} />
-      <p className="chat-hint">TF-IDF search across transcripts · citations show which meeting each answer came from</p>
+      <p className="chat-hint">
+        Search across files ·{" "}
+        {answerMode === "general" ? "General mode: blends files with broader knowledge" : "Grounded mode: answers strictly from your files"}
+      </p>
     </>
   );
 }
@@ -345,7 +414,7 @@ function MessageList({ messages, loading, loadingHistory, bottomRef, isMulti }) 
   );
 }
 
-function ChatInputRow({ input, setInput, onKey, onSend, disabled }) {
+function ChatInputRow({ input, setInput, onKey, onSend, disabled, placeholder }) {
   return (
     <div className="chat-input-row">
       <textarea
@@ -353,7 +422,7 @@ function ChatInputRow({ input, setInput, onKey, onSend, disabled }) {
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={onKey}
-        placeholder="Ask about decisions, action items, or what someone said…"
+        placeholder={placeholder || "Ask about decisions, action items, or what someone said…"}
         rows={2}
         disabled={disabled}
       />

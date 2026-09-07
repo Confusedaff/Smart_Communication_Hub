@@ -45,8 +45,12 @@ import db
 import auth
 import sessions
 import parser
+import advanced_parser
+import doc_classifier
 import chatbot
 import chatbot_multi
+import extractor
+import document_extractor
 import export
 import ollama_client
 
@@ -151,6 +155,7 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     question: str
+    mode: str | None = None  # "document" | "general" — overrides the session's saved mode for this call
 
 
 class ChatResponse(BaseModel):
@@ -159,6 +164,15 @@ class ChatResponse(BaseModel):
     citations: list[dict]
     session_id: str
     timing: dict | None = None
+    mode: str | None = None
+
+
+class ModeUpdateRequest(BaseModel):
+    chat_mode: str  # "document" | "general"
+
+
+class DocTypeUpdateRequest(BaseModel):
+    doc_type: str  # "meeting" | "document"
 
 
 class ActionItemStatusUpdate(BaseModel):
@@ -278,6 +292,10 @@ async def get_session_detail(session_id: str, user: dict = Depends(auth.get_curr
         "char_count":     len(session["raw_text"]),
         "speakers":       _unique_speakers(session["segments"]),
         "chat_turns":     len(session["chat_history"]) // 2,
+        "doc_type":       session.get("doc_type", "meeting"),
+        "chat_mode":      session.get("chat_mode", "document"),
+        "table_count":    len(session.get("tables") or []),
+        "image_count":    len(session.get("images") or []),
     }
 
 
@@ -291,40 +309,89 @@ async def delete_session_route(session_id: str, user: dict = Depends(auth.get_cu
 
 # ── Upload ────────────────────────────────────────────────────────────────────
 
-@app.post("/upload", tags=["Transcript"], status_code=201)
-async def upload_transcript(file: UploadFile = File(...), user: dict = Depends(auth.get_current_user)):
-    filename = file.filename or "transcript"
+_SIMPLE_EXTS = ("txt", "vtt")            # handled by parser.py (plain text / VTT)
+_ADVANCED_EXTS = ("pdf", "docx", "pptx", "xlsx", "xls")  # handled by advanced_parser.py
+_ALL_EXTS = _SIMPLE_EXTS + _ADVANCED_EXTS
+
+
+def _ingest_file(filename: str, raw_bytes: bytes) -> tuple[str, list[dict], list[dict], list[dict]]:
+    """
+    Dispatch a raw upload to the right parser and return:
+      (raw_text, segments, tables, images)
+    Raises HTTPException on failure (so callers can just re-raise / propagate).
+    """
     ext = filename.rsplit(".", 1)[-1].lower()
 
-    if ext not in ("txt", "vtt", "pdf"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type '.{ext}'. Only .txt, .vtt, and .pdf are accepted.",
-        )
-
-    raw_bytes = await file.read()
-
-    if ext == "pdf":
-        try:
-            content = parser.extract_pdf_text(raw_bytes)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-    else:
+    if ext in _SIMPLE_EXTS:
         try:
             content = raw_bytes.decode("utf-8")
         except UnicodeDecodeError:
             content = raw_bytes.decode("latin-1")
+        if not content.strip():
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        raw_text, segs = parser.parse(filename, content)
+        return raw_text, segs, [], []
 
-    if not content.strip():
-        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if ext in _ADVANCED_EXTS:
+        try:
+            bundle = advanced_parser.extract(filename, raw_bytes)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        raw_text = bundle["raw_text"]
+        if not raw_text.strip():
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        # Reuse parser.py's plain-text segmenter so speaker/timestamp
+        # detection (for PDFs that ARE transcripts) still works, while
+        # tables/images ride along separately for richer chat context.
+        _, segs = parser.parse(filename, raw_text)
+        return raw_text, segs, bundle["tables"], bundle["images"]
 
-    raw_text, segs = parser.parse(filename, content)
+    raise HTTPException(
+        status_code=400,
+        detail=f"Unsupported file type '.{ext}'. Accepted types: {', '.join('.' + e for e in _ALL_EXTS)}.",
+    )
 
-    if not segs:
+
+@app.post("/upload", tags=["Transcript"], status_code=201)
+async def upload_transcript(
+    file: UploadFile = File(...),
+    doc_type: str = Query(
+        "auto",
+        description="'auto' (default, classify automatically), 'meeting', or 'document'",
+    ),
+    chat_mode: str = Query(
+        "document",
+        description="Default chat mode for this session: 'document' (grounded) or 'general' (blended)",
+    ),
+    user: dict = Depends(auth.get_current_user),
+):
+    filename = file.filename or "transcript"
+    raw_bytes = await file.read()
+
+    raw_text, segs, tables, images = _ingest_file(filename, raw_bytes)
+
+    if not segs and not tables and not images:
         raise HTTPException(status_code=422, detail="Could not parse any content from the file.")
 
+    # ── Mode switcher: classify meeting vs. general document ──────────────
+    if doc_type == "auto":
+        classification = doc_classifier.classify(filename, raw_text, segs)
+        resolved_doc_type = "meeting" if classification["doc_type"] == "meeting" else "document"
+    elif doc_type in ("meeting", "document"):
+        classification = None
+        resolved_doc_type = doc_type
+    else:
+        raise HTTPException(status_code=400, detail="doc_type must be 'auto', 'meeting', or 'document'.")
+
+    if chat_mode not in ("document", "general"):
+        raise HTTPException(status_code=400, detail="chat_mode must be 'document' or 'general'.")
+
     user_id = str(user["id"])
-    session_id = await sessions.create_session(user_id, filename, raw_text, segs)
+    session_id = await sessions.create_session(
+        user_id, filename, raw_text, segs,
+        doc_type=resolved_doc_type, chat_mode=chat_mode,
+        tables=tables, images=images,
+    )
 
     extract_timing = ollama_client.get_expected_duration("extract")
     session = await sessions.get_session(session_id, user_id)
@@ -336,14 +403,20 @@ async def upload_transcript(file: UploadFile = File(...), user: dict = Depends(a
         "segment_count":            len(segs),
         "speakers":                 _unique_speakers(segs),
         "char_count":               len(raw_text),
+        "table_count":              len(tables),
+        "image_count":              len(images),
+        "images_with_text":         sum(1 for i in images if i.get("ocr_text")),
+        "doc_type":                 resolved_doc_type,
+        "doc_type_classification":  classification,
+        "chat_mode":                chat_mode,
         "extractor_engine":         _extractor_label,
         "expected_extract_seconds": extract_timing["estimated_seconds"],
         "llm_backend":              extract_timing["backend"],
         "extraction_cached":        extraction_cached,
         "message": (
-            "Transcript uploaded (extraction reused from identical file)."
+            "File uploaded (extraction reused from identical file)."
             if extraction_cached else
-            "Transcript uploaded. Call GET /sessions/{session_id}/extract to analyse."
+            "File uploaded. Call GET /sessions/{session_id}/extract to analyse."
         ),
     }
 
@@ -351,35 +424,45 @@ async def upload_transcript(file: UploadFile = File(...), user: dict = Depends(a
 # ── Batch upload ──────────────────────────────────────────────────────────────
 
 @app.post("/upload/batch", tags=["Transcript"], status_code=201)
-async def upload_batch(files: list[UploadFile] = File(...), user: dict = Depends(auth.get_current_user)):
-    """Upload multiple transcript files concurrently, all owned by the authenticated user."""
+async def upload_batch(
+    files: list[UploadFile] = File(...),
+    doc_type: str = Query("auto", description="'auto', 'meeting', or 'document' — applied to every file in the batch"),
+    chat_mode: str = Query("document", description="'document' or 'general' — applied to every file in the batch"),
+    user: dict = Depends(auth.get_current_user),
+):
+    """Upload multiple files concurrently, all owned by the authenticated user."""
     user_id = str(user["id"])
 
     async def _process_one(file: UploadFile) -> dict:
         filename = file.filename or "transcript"
         ext = filename.rsplit(".", 1)[-1].lower()
-        if ext not in ("txt", "vtt", "pdf"):
+        if ext not in _ALL_EXTS:
             return {"filename": filename, "error": f"Unsupported type '.{ext}'"}
         raw_bytes = await file.read()
-        if ext == "pdf":
-            try:
-                content = parser.extract_pdf_text(raw_bytes)
-            except ValueError as exc:
-                return {"filename": filename, "error": str(exc)}
-        else:
-            try:
-                content = raw_bytes.decode("utf-8")
-            except UnicodeDecodeError:
-                content = raw_bytes.decode("latin-1")
-        if not content.strip():
-            return {"filename": filename, "error": "File is empty"}
-        raw_text, segs = parser.parse(filename, content)
-        if not segs:
+        try:
+            raw_text, segs, tables, images = _ingest_file(filename, raw_bytes)
+        except HTTPException as exc:
+            return {"filename": filename, "error": exc.detail}
+
+        if not segs and not tables and not images:
             return {"filename": filename, "error": "Could not parse content"}
-        session_id = await sessions.create_session(user_id, filename, raw_text, segs)
+
+        if doc_type == "auto":
+            classification = doc_classifier.classify(filename, raw_text, segs)
+            resolved_doc_type = "meeting" if classification["doc_type"] == "meeting" else "document"
+        else:
+            resolved_doc_type = doc_type
+
+        session_id = await sessions.create_session(
+            user_id, filename, raw_text, segs,
+            doc_type=resolved_doc_type, chat_mode=chat_mode,
+            tables=tables, images=images,
+        )
         return {
             "filename": filename, "session_id": session_id,
             "segment_count": len(segs), "speakers": _unique_speakers(segs),
+            "table_count": len(tables), "image_count": len(images),
+            "doc_type": resolved_doc_type,
         }
 
     results = await asyncio.gather(*[_process_one(f) for f in files], return_exceptions=True)
@@ -398,17 +481,34 @@ async def upload_batch(files: list[UploadFile] = File(...), user: dict = Depends
 _extract_jobs: dict[str, dict] = {}
 
 
+async def _run_extract_for_session(session: dict, run_extractor, is_document_mode: bool):
+    """Dispatch to the right extractor signature: document_extractor.extract()
+    takes a filename kwarg for nicer prompt framing; the meeting extractors don't."""
+    if is_document_mode:
+        return await run_extractor.extract(
+            session["raw_text"], session["segments"], filename=session["filename"]
+        )
+    return await run_extractor.extract(session["raw_text"], session["segments"])
+
+
 @app.get("/sessions/{session_id}/extract", tags=["Analysis"])
 async def extract_from_session(
     session_id: str,
     background_tasks: BackgroundTasks,
     force: bool  = Query(False, description="Re-run extraction even if cached"),
-    engine: str  = Query(None,  description="Override engine: 'nlp' or 'llm'"),
+    engine: str  = Query(None,  description="Override engine: 'nlp' or 'llm' (meeting docs only)"),
     async_mode: bool = Query(False, description="Return job_id immediately, poll /extract/status"),
     user: dict = Depends(auth.get_current_user),
 ):
+    """
+    Runs the appropriate extraction for the session's doc_type:
+      - "meeting"  → decisions / action_items / summary (extractor.py or custom_extractor.py)
+      - "document" → doc_kind / summary / key_points / action_guidance / sections
+                     (document_extractor.py) — e.g. "how should I prepare for this role?"
+    """
     user_id = str(user["id"])
     session = await _require_session(session_id, user)
+    is_document_mode = session.get("doc_type") == "document"
 
     if session["extraction"] and not force:
         cached = session["extraction"].copy()
@@ -416,16 +516,20 @@ async def extract_from_session(
         return {
             "session_id":       session_id,
             "cached":           True,
+            "doc_type":         session.get("doc_type", "meeting"),
             "extractor_engine": session.get("extraction_engine", _extractor_label),
             **cached,
         }
 
-    if engine:
+    if is_document_mode:
+        run_extractor = document_extractor
+        engine_label  = "LLM document analyst"
+    elif engine:
         if engine == "nlp":
             import custom_extractor as run_extractor
             engine_label = "spaCy NLP (offline, no LLM)"
         elif engine == "llm":
-            import extractor as run_extractor
+            run_extractor = extractor
             engine_label = "Ollama LLM"
         else:
             raise HTTPException(status_code=400, detail="engine must be 'nlp' or 'llm'")
@@ -438,7 +542,7 @@ async def extract_from_session(
         job_id = str(_uuid.uuid4())
         _extract_jobs[job_id] = {"status": "pending", "session_id": session_id, "user_id": user_id}
         background_tasks.add_task(
-            _run_extraction_job, job_id, session_id, user_id, run_extractor, engine_label
+            _run_extraction_job, job_id, session_id, user_id, run_extractor, engine_label, is_document_mode
         )
         return {
             "job_id":    job_id,
@@ -449,7 +553,7 @@ async def extract_from_session(
 
     # Synchronous path (default)
     try:
-        result = await run_extractor.extract(session["raw_text"], session["segments"])
+        result = await _run_extract_for_session(session, run_extractor, is_document_mode)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=f"Extraction failed: {exc}")
     except Exception as exc:
@@ -461,16 +565,19 @@ async def extract_from_session(
     await sessions.set_extraction_engine(session_id, user_id, engine_label)
 
     return {
-        "session_id": session_id, "cached": False,
+        "session_id": session_id, "cached": False, "doc_type": session.get("doc_type", "meeting"),
         "extractor_engine": engine_label, "timing": timing, **result,
     }
 
 
-async def _run_extraction_job(job_id: str, session_id: str, user_id: str, run_extractor, engine_label: str):
+async def _run_extraction_job(
+    job_id: str, session_id: str, user_id: str, run_extractor, engine_label: str,
+    is_document_mode: bool = False,
+):
     _extract_jobs[job_id]["status"] = "running"
     try:
         session = await sessions.get_session(session_id, user_id)
-        result  = await run_extractor.extract(session["raw_text"], session["segments"])
+        result  = await _run_extract_for_session(session, run_extractor, is_document_mode)
         result.pop("_timing", None)
         await sessions.set_extraction(session_id, user_id, result)
         await sessions.set_extraction_engine(session_id, user_id, engine_label)
@@ -500,6 +607,10 @@ async def chat_with_transcript(request: Request, session_id: str, body: ChatRequ
     if not body.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
+    # Per-message mode override takes precedence; otherwise use the
+    # session's saved default (set at upload time or via PATCH .../mode).
+    effective_mode = body.mode if body.mode in ("document", "general") else session.get("chat_mode", "document")
+
     try:
         result = await chatbot.answer(
             question=body.question,
@@ -507,6 +618,9 @@ async def chat_with_transcript(request: Request, session_id: str, body: ChatRequ
             segments=session["segments"],
             chat_history=session["chat_history"],
             filename=session["filename"],
+            doc_type=session.get("doc_type", "meeting"),
+            mode=effective_mode,
+            tables=session.get("tables"),
         )
     except Exception as exc:
         import traceback; traceback.print_exc()
@@ -519,12 +633,39 @@ async def chat_with_transcript(request: Request, session_id: str, body: ChatRequ
     return ChatResponse(
         question=body.question, answer=result["answer"],
         citations=result.get("citations", []),
-        session_id=session_id, timing=timing,
+        session_id=session_id, timing=timing, mode=effective_mode,
     )
 
 
+@app.patch("/sessions/{session_id}/mode", tags=["Chat"], summary="Switch chat mode: document (grounded) vs general (blended)")
+async def update_chat_mode(session_id: str, body: ModeUpdateRequest, user: dict = Depends(auth.get_current_user)):
+    if body.chat_mode not in ("document", "general"):
+        raise HTTPException(status_code=400, detail="chat_mode must be 'document' or 'general'.")
+    await _require_session(session_id, user)
+    updated = await sessions.set_chat_mode(session_id, str(user["id"]), body.chat_mode)
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found.")
+    return {"session_id": session_id, "chat_mode": body.chat_mode}
+
+
+@app.patch("/sessions/{session_id}/doc-type", tags=["Chat"], summary="Override auto-detected document type")
+async def update_doc_type(session_id: str, body: DocTypeUpdateRequest, user: dict = Depends(auth.get_current_user)):
+    if body.doc_type not in ("meeting", "document"):
+        raise HTTPException(status_code=400, detail="doc_type must be 'meeting' or 'document'.")
+    await _require_session(session_id, user)
+    updated = await sessions.set_doc_type(session_id, str(user["id"]), body.doc_type)
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found.")
+    return {"session_id": session_id, "doc_type": body.doc_type}
+
+
 @app.get("/sessions/{session_id}/chat/stream", tags=["Chat"])
-async def chat_stream(session_id: str, question: str = Query(...), user: dict = Depends(auth.get_current_user)):
+async def chat_stream(
+    session_id: str,
+    question: str = Query(...),
+    mode: str = Query(None, description="Optional per-call override: 'document' or 'general'"),
+    user: dict = Depends(auth.get_current_user),
+):
     """
     Server-Sent Events streaming chat endpoint.
     The client receives tokens in real-time as text/event-stream.
@@ -540,6 +681,8 @@ async def chat_stream(session_id: str, question: str = Query(...), user: dict = 
     if not question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
+    effective_mode = mode if mode in ("document", "general") else session.get("chat_mode", "document")
+
     async def event_generator():
         full_answer = []
         try:
@@ -548,6 +691,9 @@ async def chat_stream(session_id: str, question: str = Query(...), user: dict = 
                 segments=session["segments"],
                 chat_history=session["chat_history"],
                 filename=session["filename"],
+                doc_type=session.get("doc_type", "meeting"),
+                mode=effective_mode,
+                tables=session.get("tables"),
             ):
                 full_answer.append(token)
                 yield f"data: {token}\n\n"
@@ -757,6 +903,7 @@ async def get_transcript(
 class MultiChatRequest(BaseModel):
     question: str
     session_ids: list[str] | None = None  # None = all of the user's sessions
+    mode: str | None = None  # "document" | "general" — default "document"
 
 
 @app.post("/chat/multi", tags=["Chat"], summary="Ask a question across multiple transcripts")
@@ -793,11 +940,14 @@ async def chat_multi_session(request: Request, body: MultiChatRequest, user: dic
             if sess is not None:
                 session_list.append(sess)
 
+    effective_mode = body.mode if body.mode in ("document", "general") else "document"
+
     try:
         result = await chatbot_multi.answer_multi(
             question=body.question,
             sessions=session_list,
             chat_history=[],   # multi-session chat is stateless per call
+            mode=effective_mode,
         )
     except Exception as exc:
         import traceback; traceback.print_exc()
@@ -812,6 +962,7 @@ async def chat_multi_session(request: Request, body: MultiChatRequest, user: dic
         "citations":        result.get("citations", []),
         "sessions_searched": sessions_searched,
         "timing":           timing,
+        "mode":             effective_mode,
     }
 
 

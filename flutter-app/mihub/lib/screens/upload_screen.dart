@@ -27,6 +27,15 @@ class _UploadScreenState extends State<UploadScreen>
   static const int _maxReconnectAttempts = 5;
   static const Duration _reconnectInterval = Duration(seconds: 2);
 
+  // Mode switcher — how the uploaded file should be interpreted and answered.
+  // "auto" (default) classifies meeting-vs-document automatically.
+  String _docType = 'auto'; // 'auto' | 'meeting' | 'document'
+  String _chatMode = 'document'; // 'document' (grounded) | 'general' (blended)
+
+  static const List<String> _acceptedExtensions = [
+    'txt', 'vtt', 'pdf', 'docx', 'pptx', 'xlsx', 'xls',
+  ];
+
   late AnimationController _pulseController;
   late Animation<double> _pulseAnim;
   final TextEditingController _urlController =
@@ -154,7 +163,7 @@ class _UploadScreenState extends State<UploadScreen>
 
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['txt', 'vtt', 'pdf'],
+      allowedExtensions: _acceptedExtensions,
     );
 
     if (result == null || result.files.isEmpty) return;
@@ -166,19 +175,24 @@ class _UploadScreenState extends State<UploadScreen>
     }
 
     final ext = path.split('.').last.toLowerCase();
-    if (ext != 'txt' && ext != 'vtt' && ext != 'pdf') {
-      setState(() => _errorMessage = 'Only .txt, .vtt, and .pdf files are supported.');
+    if (!_acceptedExtensions.contains(ext)) {
+      setState(() => _errorMessage =
+          'Unsupported file type. Accepted: ${_acceptedExtensions.map((e) => '.$e').join(', ')}');
       return;
     }
 
     setState(() {
       _isUploading = true;
-      _uploadStatus = 'Uploading transcript…';
+      _uploadStatus = 'Uploading file…';
     });
 
     try {
       final file = File(path);
-      final session = await ApiService.uploadTranscript(file);
+      final session = await ApiService.uploadTranscript(
+        file,
+        docType: _docType,
+        chatMode: _chatMode,
+      );
       if (mounted) {
         setState(() => _uploadStatus = 'Upload successful!');
         await Future.delayed(const Duration(milliseconds: 300));
@@ -215,7 +229,9 @@ class _UploadScreenState extends State<UploadScreen>
             children: [
               const SizedBox(height: 32),
               _buildHeader(),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
+              _buildModeSwitcher(),
+              const SizedBox(height: 24),
               _buildUploadCard(),
               const SizedBox(height: 20),
               _buildBackendCard(),
@@ -282,11 +298,90 @@ class _UploadScreenState extends State<UploadScreen>
         ),
         const SizedBox(height: 14),
         Text(
-          'Upload a meeting transcript to extract decisions, action items, and chat with your meeting data.',
+          'Upload a meeting transcript or any document — brochures, policies, reports — to extract insights and chat with your data.',
           style: TextStyle(
               color: t.textSecondary, fontSize: 14, height: 1.6),
         ),
       ],
+    );
+  }
+
+  Widget _buildModeSwitcher() {
+    final t = AppTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: t.bgCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: t.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Document type',
+              style: TextStyle(
+                  color: t.textMuted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _modePill(t, '🪄 Auto-detect', _docType == 'auto',
+                  () => setState(() => _docType = 'auto')),
+              _modePill(t, '🗣 Meeting transcript', _docType == 'meeting',
+                  () => setState(() => _docType = 'meeting')),
+              _modePill(t, '📄 General document', _docType == 'document',
+                  () => setState(() => _docType = 'document')),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text('Chat style (changeable later)',
+              style: TextStyle(
+                  color: t.textMuted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _modePill(t, '🎯 Grounded', _chatMode == 'document',
+                  () => setState(() => _chatMode = 'document')),
+              _modePill(t, '🌐 General', _chatMode == 'general',
+                  () => setState(() => _chatMode = 'general')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _modePill(
+      AppThemeTokens t, String label, bool active, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? t.accent : t.bgElevated,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(
+              color: active ? t.accent : t.border, width: 1),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: active ? t.onAccent : t.textSecondary,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
     );
   }
 
@@ -340,7 +435,7 @@ class _UploadScreenState extends State<UploadScreen>
                     Text(
                       _isUploading
                           ? (_uploadStatus ?? 'Uploading…')
-                          : 'Tap to select a transcript',
+                          : 'Tap to select a file',
                       style: TextStyle(
                           color: _isUploading ? t.accentLight : t.textPrimary,
                           fontSize: 16,
@@ -348,11 +443,12 @@ class _UploadScreenState extends State<UploadScreen>
                     ),
                     const SizedBox(height: 6),
                     if (!_isUploading)
-                      Text('.txt  ·  .vtt  ·  .pdf',
+                      Text('.txt · .vtt · .pdf · .docx · .pptx · .xlsx',
                           style: TextStyle(
                               color: t.textMuted,
                               fontSize: 12,
-                              letterSpacing: 1)),
+                              letterSpacing: 0.5),
+                          textAlign: TextAlign.center),
                   ],
                 ),
               ),
@@ -388,7 +484,7 @@ class _UploadScreenState extends State<UploadScreen>
             child: ElevatedButton.icon(
               onPressed: _backendOnline ? _pickAndUpload : null,
               icon: const Icon(Icons.add_circle_outline, size: 18),
-              label: const Text('Upload Transcript'),
+              label: const Text('Upload File'),
             ),
           ),
           if (!_backendOnline && !_isCheckingHealth)

@@ -229,7 +229,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['txt', 'vtt', 'pdf'],
+      allowedExtensions: const ['txt', 'vtt', 'pdf', 'docx', 'pptx', 'xlsx', 'xls'],
     );
 
     if (result == null || result.files.isEmpty) return;
@@ -240,14 +240,16 @@ class _SessionsScreenState extends State<SessionsScreen> {
     }
 
     final ext = path.split('.').last.toLowerCase();
-    if (ext != 'txt' && ext != 'vtt' && ext != 'pdf') {
-      setState(() => _errorMessage = 'Only .txt, .vtt, and .pdf files are supported.');
+    const accepted = ['txt', 'vtt', 'pdf', 'docx', 'pptx', 'xlsx', 'xls'];
+    if (!accepted.contains(ext)) {
+      setState(() => _errorMessage =
+          'Unsupported file type. Accepted: ${accepted.map((e) => '.$e').join(', ')}');
       return;
     }
 
     setState(() {
       _isUploading = true;
-      _uploadStatus = 'Uploading transcript…';
+      _uploadStatus = 'Uploading file…';
     });
 
     try {
@@ -298,23 +300,25 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['txt', 'vtt', 'pdf'],
+      allowedExtensions: const ['txt', 'vtt', 'pdf', 'docx', 'pptx', 'xlsx', 'xls'],
       allowMultiple: true,
     );
 
     if (result == null || result.files.isEmpty) return;
 
+    const acceptedBatch = ['txt', 'vtt', 'pdf', 'docx', 'pptx', 'xlsx', 'xls'];
     final paths = result.files
         .map((f) => f.path)
         .whereType<String>()
         .where((p) {
           final ext = p.split('.').last.toLowerCase();
-          return ext == 'txt' || ext == 'vtt' || ext == 'pdf';
+          return acceptedBatch.contains(ext);
         })
         .toList();
 
     if (paths.isEmpty) {
-      setState(() => _errorMessage = 'No valid .txt, .vtt, or .pdf files selected.');
+      setState(() => _errorMessage =
+          'No valid files selected. Accepted: ${acceptedBatch.map((e) => '.$e').join(', ')}');
       return;
     }
 

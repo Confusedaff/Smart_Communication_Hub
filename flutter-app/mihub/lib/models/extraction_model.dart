@@ -141,18 +141,55 @@ class ExtractionTiming {
   }
 }
 
+/// A single item in a general document's key-points / action-guidance /
+/// open-questions lists — just a string, but wrapped so callers can extend
+/// it later without changing call sites.
+class DocSection {
+  final String title;
+  final String gist;
+
+  const DocSection({required this.title, required this.gist});
+
+  factory DocSection.fromJson(dynamic json) {
+    if (json is String) return DocSection(title: json, gist: '');
+    final map = Map<String, dynamic>.from(json as Map);
+    return DocSection(
+      title: (map['title'] ?? '').toString(),
+      gist: (map['gist'] ?? '').toString(),
+    );
+  }
+}
+
 class ExtractionModel {
   final String summary;
   final List<DecisionItem> decisions;
   final List<ActionItem> actionItems;
   final ExtractionTiming? timing;
 
+  // General-document fields (populated when doc_type == "document"; the
+  // meeting fields above stay empty in that case, and vice versa).
+  final String docKind; // "job_posting" | "policy" | "contract" | "report" | "brochure" | "guide" | "other"
+  final List<String> keyPoints;
+  final List<String> actionGuidance; // e.g. "how to prepare for this role"
+  final List<DocSection> sections;
+  final List<String> openQuestions;
+
   const ExtractionModel({
     required this.summary,
     required this.decisions,
     required this.actionItems,
     this.timing,
+    this.docKind = 'other',
+    this.keyPoints = const [],
+    this.actionGuidance = const [],
+    this.sections = const [],
+    this.openQuestions = const [],
   });
+
+  bool get isDocumentProfile => keyPoints.isNotEmpty ||
+      actionGuidance.isNotEmpty ||
+      sections.isNotEmpty ||
+      openQuestions.isNotEmpty;
 
   int get uniqueOwners => actionItems
       .map((a) => a.owner)
@@ -197,11 +234,32 @@ class ExtractionModel {
         ? ExtractionTiming.fromJson(Map<String, dynamic>.from(timingRaw))
         : null;
 
+    final docKind = (json['doc_kind'] ?? 'other').toString();
+    final keyPoints = List<dynamic>.from(json['key_points'] ?? const [])
+        .map((e) => e.toString())
+        .toList();
+    final actionGuidance =
+        List<dynamic>.from(json['action_guidance'] ?? const [])
+            .map((e) => e.toString())
+            .toList();
+    final sections = List<dynamic>.from(json['sections'] ?? const [])
+        .map((e) => DocSection.fromJson(e))
+        .toList();
+    final openQuestions =
+        List<dynamic>.from(json['open_questions'] ?? const [])
+            .map((e) => e.toString())
+            .toList();
+
     return ExtractionModel(
       summary: summary,
       decisions: decisions,
       actionItems: actionItems,
       timing: timing,
+      docKind: docKind,
+      keyPoints: keyPoints,
+      actionGuidance: actionGuidance,
+      sections: sections,
+      openQuestions: openQuestions,
     );
   }
 }

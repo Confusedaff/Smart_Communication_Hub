@@ -2,26 +2,30 @@ import { useState, useRef, useCallback } from "react";
 import { api } from "../services/api";
 import AccountMenu from "./AccountMenu";
 
+const ACCEPTED_EXTS = ["txt", "vtt", "pdf", "docx", "pptx", "xlsx", "xls"];
+
 export default function UploadView({ onSuccess, sessionCount, onOpenHistory, user, onLogout }) {
   const [dragging, setDragging] = useState(false);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState(null);
   const [progress, setProgress] = useState("");
+  const [docType,  setDocType]  = useState("auto");     // "auto" | "meeting" | "document"
+  const [chatMode, setChatMode] = useState("document");  // "document" | "general"
   const inputRef = useRef();
 
   const handleFile = useCallback(async (file) => {
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
-    if (!["txt", "vtt", "pdf"].includes(ext)) {
-      setError("Only .txt, .vtt, and .pdf files are supported.");
+    if (!ACCEPTED_EXTS.includes(ext)) {
+      setError(`Unsupported file type. Accepted: ${ACCEPTED_EXTS.map((e) => "." + e).join(", ")}`);
       return;
     }
     setError(null);
     setLoading(true);
-    setProgress("Uploading transcript…");
+    setProgress("Uploading file…");
     try {
-      const data = await api.upload(file);
-      setProgress("Parsing transcript…");
+      const data = await api.upload(file, { docType, chatMode });
+      setProgress("Parsing content…");
       await new Promise((r) => setTimeout(r, 300));
       onSuccess(data);
     } catch (e) {
@@ -30,7 +34,7 @@ export default function UploadView({ onSuccess, sessionCount, onOpenHistory, use
       setLoading(false);
       setProgress("");
     }
-  }, [onSuccess]);
+  }, [onSuccess, docType, chatMode]);
 
   const onDrop = (e) => {
     e.preventDefault();
@@ -45,7 +49,7 @@ export default function UploadView({ onSuccess, sessionCount, onOpenHistory, use
       {/* History button — top right if sessions exist */}
       {sessionCount > 0 && (
         <button className="upload-history-btn" onClick={onOpenHistory}>
-          🗂 {sessionCount} previous transcript{sessionCount !== 1 ? "s" : ""}
+          🗂 {sessionCount} previous file{sessionCount !== 1 ? "s" : ""}
         </button>
       )}
 
@@ -57,11 +61,55 @@ export default function UploadView({ onSuccess, sessionCount, onOpenHistory, use
         <div className="logo-mark">MIH</div>
         <div className="header-text">
           <h1>Meeting Intelligence Hub</h1>
-          <p>Surface decisions. Extract actions. Stop re-reading.</p>
+          <p>Surface decisions. Extract actions. Understand any document.</p>
         </div>
       </header>
 
       <main className="upload-main">
+        {/* Mode switcher — how the file should be interpreted */}
+        <div className="mode-switcher-row">
+          <div className="mode-switcher-group">
+            <label className="mode-switcher-label">Document type</label>
+            <div className="mode-pills">
+              {[
+                { id: "auto", label: "🪄 Auto-detect", hint: "Recommended" },
+                { id: "meeting", label: "🗣 Meeting transcript" },
+                { id: "document", label: "📄 General document" },
+              ].map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  className={`mode-pill ${docType === o.id ? "active" : ""}`}
+                  onClick={() => setDocType(o.id)}
+                  title={o.hint || ""}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mode-switcher-group">
+            <label className="mode-switcher-label">Chat style (changeable later)</label>
+            <div className="mode-pills">
+              {[
+                { id: "document", label: "🎯 Grounded", hint: "Answers strictly from the file" },
+                { id: "general", label: "🌐 General", hint: "Blends file + general knowledge" },
+              ].map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  className={`mode-pill ${chatMode === o.id ? "active" : ""}`}
+                  onClick={() => setChatMode(o.id)}
+                  title={o.hint}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
         <div
           className={`drop-zone ${dragging ? "dragging" : ""} ${loading ? "loading" : ""}`}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -75,7 +123,7 @@ export default function UploadView({ onSuccess, sessionCount, onOpenHistory, use
           <input
             ref={inputRef}
             type="file"
-            accept=".txt,.vtt,.pdf"
+            accept={ACCEPTED_EXTS.map((e) => "." + e).join(",")}
             hidden
             onChange={(e) => handleFile(e.target.files[0])}
           />
@@ -94,12 +142,15 @@ export default function UploadView({ onSuccess, sessionCount, onOpenHistory, use
                   <path d="M34 36l4-4-4-4" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </div>
-              <p className="drop-label">Drop your transcript here</p>
-              <p className="drop-sub">or click to browse &nbsp;·&nbsp; .txt, .vtt, or .pdf</p>
+              <p className="drop-label">Drop your file here</p>
+              <p className="drop-sub">or click to browse &nbsp;·&nbsp; meeting transcripts, brochures, policies, reports, spreadsheets…</p>
               <div className="drop-formats">
                 <span className="badge">.TXT</span>
                 <span className="badge">.VTT</span>
                 <span className="badge">.PDF</span>
+                <span className="badge">.DOCX</span>
+                <span className="badge">.PPTX</span>
+                <span className="badge">.XLSX</span>
               </div>
             </div>
           )}
@@ -112,7 +163,9 @@ export default function UploadView({ onSuccess, sessionCount, onOpenHistory, use
             { icon: "⚡", label: "Instant extraction" },
             { icon: "🎯", label: "Decision detection" },
             { icon: "✅", label: "Action items" },
+            { icon: "📊", label: "Table & image parsing" },
             { icon: "💬", label: "Streaming AI Q&A" },
+            { icon: "🌐", label: "General knowledge mode" },
             { icon: "💾", label: "Persistent sessions" },
           ].map((f) => (
             <div className="chip" key={f.label}>

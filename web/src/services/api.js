@@ -75,16 +75,18 @@ export const api = {
 
   health: () => request("GET", "/health").then((r) => r.json()),
 
-  upload: (file) => {
+  upload: (file, { docType = "auto", chatMode = "document" } = {}) => {
     const form = new FormData();
     form.append("file", file);
-    return request("POST", "/upload", { body: form }).then((r) => r.json());
+    const params = new URLSearchParams({ doc_type: docType, chat_mode: chatMode });
+    return request("POST", `/upload?${params.toString()}`, { body: form }).then((r) => r.json());
   },
 
-  uploadBatch: (files) => {
+  uploadBatch: (files, { docType = "auto", chatMode = "document" } = {}) => {
     const form = new FormData();
     files.forEach((f) => form.append("files", f));
-    return request("POST", "/upload/batch", { body: form }).then((r) => r.json());
+    const params = new URLSearchParams({ doc_type: docType, chat_mode: chatMode });
+    return request("POST", `/upload/batch?${params.toString()}`, { body: form }).then((r) => r.json());
   },
 
   extract: (sessionId, engine = null, force = false) => {
@@ -96,17 +98,18 @@ export const api = {
   },
 
   // Non-streaming chat (kept for fallback)
-  chat: (sessionId, question) =>
+  chat: (sessionId, question, mode = null) =>
     request("POST", `/sessions/${sessionId}/chat`, {
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, ...(mode ? { mode } : {}) }),
     }).then((r) => r.json()),
 
   // Streaming chat — returns an EventSource. EventSource can't set custom
   // headers, so the JWT is passed as a query param (the backend's
   // get_current_user accepts either).
-  chatStream: (sessionId, question) => {
+  chatStream: (sessionId, question, mode = null) => {
     const params = new URLSearchParams({ question });
+    if (mode) params.set("mode", mode);
     if (authToken) params.set("token", authToken);
     const url = `${BASE_URL}/sessions/${sessionId}/chat/stream?${params.toString()}`;
     return new EventSource(url);
@@ -118,15 +121,30 @@ export const api = {
   clearHistory: (sessionId) =>
     request("DELETE", `/sessions/${sessionId}/chat/history`).then((r) => r.json()),
 
+  // Switch a session's default chat mode: "document" (grounded) | "general" (blended)
+  setChatMode: (sessionId, chatMode) =>
+    request("PATCH", `/sessions/${sessionId}/mode`, {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_mode: chatMode }),
+    }).then((r) => r.json()),
+
+  // Override the auto-detected document type: "meeting" | "document"
+  setDocType: (sessionId, docType) =>
+    request("PATCH", `/sessions/${sessionId}/doc-type`, {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc_type: docType }),
+    }).then((r) => r.json()),
+
   // ── Cross-session RAG chat (Feature 3) ──────────────────────────────────
   // session_ids is optional — omit to search ALL sessions.
   // Response shape is identical to per-session /chat.
-  multiChat: (question, sessionIds = null) =>
+  multiChat: (question, sessionIds = null, mode = null) =>
     request("POST", "/chat/multi", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         question,
         ...(sessionIds && sessionIds.length > 0 ? { session_ids: sessionIds } : {}),
+        ...(mode ? { mode } : {}),
       }),
     }).then((r) => r.json()),
 

@@ -77,8 +77,16 @@ class ApiService {
 
   // ── Upload ────────────────────────────────────────────────────────────────
 
-  static Future<SessionModel> uploadTranscript(File file) async {
-    final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/upload'));
+  static Future<SessionModel> uploadTranscript(
+    File file, {
+    String docType = 'auto',
+    String chatMode = 'document',
+  }) async {
+    final uri = Uri.parse('$_baseUrl/upload').replace(queryParameters: {
+      'doc_type': docType,
+      'chat_mode': chatMode,
+    });
+    final request = http.MultipartRequest('POST', uri);
     request.headers.addAll(_authHeaders);
     request.files.add(await http.MultipartFile.fromPath('file', file.path));
     final streamed = await request.send().timeout(const Duration(seconds: 30));
@@ -89,6 +97,36 @@ class ApiService {
     }
     final error = _parseError(response.body);
     throw ApiException('Upload failed: $error');
+  }
+
+  /// Switch a session's default chat mode: "document" (grounded) or "general" (blended).
+  static Future<void> setChatMode(String sessionId, String chatMode) async {
+    final response = await http
+        .patch(
+          Uri.parse('$_baseUrl/sessions/$sessionId/mode'),
+          headers: _jsonHeaders,
+          body: json.encode({'chat_mode': chatMode}),
+        )
+        .timeout(const Duration(seconds: 15));
+    _throwIfUnauthorized(response);
+    if (response.statusCode != 200) {
+      throw ApiException('Failed to update chat mode: ${_parseError(response.body)}');
+    }
+  }
+
+  /// Override the auto-detected document type: "meeting" or "document".
+  static Future<void> setDocType(String sessionId, String docType) async {
+    final response = await http
+        .patch(
+          Uri.parse('$_baseUrl/sessions/$sessionId/doc-type'),
+          headers: _jsonHeaders,
+          body: json.encode({'doc_type': docType}),
+        )
+        .timeout(const Duration(seconds: 15));
+    _throwIfUnauthorized(response);
+    if (response.statusCode != 200) {
+      throw ApiException('Failed to update document type: ${_parseError(response.body)}');
+    }
   }
 
   // ── Extraction ────────────────────────────────────────────────────────────
@@ -127,12 +165,15 @@ class ApiService {
   // ── Chat ──────────────────────────────────────────────────────────────────
 
   static Future<ChatResponse> sendMessage(
-      String sessionId, String question) async {
+      String sessionId, String question, {String? mode}) async {
     final response = await http
         .post(
           Uri.parse('$_baseUrl/sessions/$sessionId/chat'),
           headers: _jsonHeaders,
-          body: json.encode({'question': question}),
+          body: json.encode({
+            'question': question,
+            if (mode != null) 'mode': mode,
+          }),
         )
         .timeout(const Duration(minutes: 2));
     _throwIfUnauthorized(response);
@@ -315,9 +356,16 @@ class ApiService {
   /// Upload multiple transcript files at once via POST /upload/batch.
   /// Returns a list of result maps — each has either 'session_id' (success)
   /// or 'error' (failure) plus the original 'filename'.
-  static Future<List<Map<String, dynamic>>> uploadBatch(List<File> files) async {
-    final request =
-        http.MultipartRequest('POST', Uri.parse('$_baseUrl/upload/batch'));
+  static Future<List<Map<String, dynamic>>> uploadBatch(
+    List<File> files, {
+    String docType = 'auto',
+    String chatMode = 'document',
+  }) async {
+    final uri = Uri.parse('$_baseUrl/upload/batch').replace(queryParameters: {
+      'doc_type': docType,
+      'chat_mode': chatMode,
+    });
+    final request = http.MultipartRequest('POST', uri);
     request.headers.addAll(_authHeaders);
     for (final file in files) {
       request.files.add(await http.MultipartFile.fromPath('files', file.path));
@@ -338,12 +386,16 @@ class ApiService {
 
   /// Cross-session chat — searches across multiple (or all) of the current
   /// user's own transcripts. [sessionIds] is optional; pass null to search
-  /// all of the authenticated user's sessions.
+  /// all of the authenticated user's sessions. [mode] is "document"
+  /// (grounded, default) or "general" (blends with the model's own knowledge).
   static Future<Map<String, dynamic>> sendMultiChat(
-      String question, {List<String>? sessionIds}) async {
+      String question, {List<String>? sessionIds, String? mode}) async {
     final body = <String, dynamic>{'question': question};
     if (sessionIds != null && sessionIds.isNotEmpty) {
       body['session_ids'] = sessionIds;
+    }
+    if (mode != null) {
+      body['mode'] = mode;
     }
     final response = await http
         .post(

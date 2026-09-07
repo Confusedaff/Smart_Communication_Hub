@@ -96,12 +96,31 @@ async def _create_schema() -> None:
                 extraction         JSONB,
                 extraction_engine  TEXT,
                 chat_history       JSONB,
-                content_hash       TEXT
+                content_hash       TEXT,
+                doc_type           TEXT DEFAULT 'auto',
+                chat_mode          TEXT DEFAULT 'document',
+                tables             JSONB,
+                images             JSONB,
+                doc_profile        JSONB
             );
         """)
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
         """)
+        # ── Backward-compatible migrations for DBs created before these
+        # columns existed. Safe to run every startup — IF NOT EXISTS guards
+        # against re-adding on already-migrated databases.
+        for _col, _ddl in [
+            ("doc_type",    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS doc_type TEXT DEFAULT 'auto'"),
+            ("chat_mode",   "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS chat_mode TEXT DEFAULT 'document'"),
+            ("tables",      "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS tables JSONB"),
+            ("images",      "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS images JSONB"),
+            ("doc_profile", "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS doc_profile JSONB"),
+        ]:
+            try:
+                await conn.execute(_ddl)
+            except Exception as exc:
+                logger.warning(f"[DB] Migration for column '{_col}' skipped/failed: {exc}")
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS action_item_statuses (
                 session_id  TEXT NOT NULL,

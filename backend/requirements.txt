@@ -7,6 +7,14 @@ spacy>=3.7.0
 python-dotenv>=1.0.0
 pypdf>=4.3.0
 
+# Advanced document parsing (mode switcher: general documents, tables, images)
+pdfplumber>=0.11.0      # PDF table extraction
+python-docx>=1.1.0      # Word (.docx) documents
+python-pptx>=1.0.0      # PowerPoint (.pptx) slide decks
+openpyxl>=3.1.0         # Excel (.xlsx) spreadsheets
+Pillow>=10.0.0           # image decoding for OCR
+pytesseract>=0.3.10      # OCR (requires the `tesseract-ocr` system package)
+
 # Database (Postgres — required for persistent users + per-user session history)
 asyncpg>=0.29.0
 

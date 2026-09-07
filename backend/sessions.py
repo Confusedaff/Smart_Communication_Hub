@@ -55,7 +55,14 @@ def _content_hash(raw_text: str) -> str:
     return hashlib.sha256(raw_text.encode()).hexdigest()
 
 
+def _jloads(val, default):
+    if val is None:
+        return default
+    return json.loads(val) if isinstance(val, str) else val
+
+
 def _row_to_session(row) -> dict:
+    row_keys = row.keys()
     return {
         "id": row["id"],
         "user_id": str(row["user_id"]),
@@ -67,6 +74,14 @@ def _row_to_session(row) -> dict:
         "extraction": (json.loads(row["extraction"]) if isinstance(row["extraction"], str) else row["extraction"]) if row["extraction"] else None,
         "extraction_engine": row["extraction_engine"],
         "chat_history": json.loads(row["chat_history"]) if isinstance(row["chat_history"], str) else (row["chat_history"] or []),
+        # New fields (mode switcher / advanced parsing). Guard with .get-style
+        # access via "in row_keys" so this still works against older DB rows
+        # fetched before a migration completed.
+        "doc_type":    (row["doc_type"] if "doc_type" in row_keys else None) or "meeting",
+        "chat_mode":   (row["chat_mode"] if "chat_mode" in row_keys else None) or "document",
+        "tables":      _jloads(row["tables"] if "tables" in row_keys else None, []),
+        "images":      _jloads(row["images"] if "images" in row_keys else None, []),
+        "doc_profile": _jloads(row["doc_profile"] if "doc_profile" in row_keys else None, None),
     }
 
 
@@ -106,7 +121,16 @@ async def cleanup_expired_sessions() -> None:
 
 # ── Public API (all user-scoped) ──────────────────────────────────────────────
 
-async def create_session(user_id: str, filename: str, raw_text: str, segments: list[dict]) -> str:
+async def create_session(
+    user_id: str,
+    filename: str,
+    raw_text: str,
+    segments: list[dict],
+    doc_type: str = "meeting",
+    chat_mode: str = "document",
+    tables: list[dict] | None = None,
+    images: list[dict] | None = None,
+) -> str:
     session_id = str(uuid.uuid4())
     now = _now_iso()
     h = _content_hash(raw_text)
@@ -120,14 +144,50 @@ async def create_session(user_id: str, filename: str, raw_text: str, segments: l
             """
             INSERT INTO sessions
                 (id, user_id, filename, created_at, last_accessed, raw_text,
-                 segments, extraction, extraction_engine, chat_history, content_hash)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                 segments, extraction, extraction_engine, chat_history, content_hash,
+                 doc_type, chat_mode, tables, images)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             """,
             session_id, user_id, filename, now, now, raw_text,
             json.dumps(segments), json.dumps(extraction) if extraction else None,
             "", json.dumps([]), h,
+            doc_type, chat_mode,
+            json.dumps(tables or []), json.dumps(images or []),
         )
     return session_id
+
+
+async def set_chat_mode(session_id: str, user_id: str, chat_mode: str) -> bool:
+    """Switch a session between 'document' (strict, grounded) and 'general' (blended) chat."""
+    if chat_mode not in ("document", "general"):
+        raise ValueError("chat_mode must be 'document' or 'general'")
+    async with db.pool().acquire() as conn:
+        result = await conn.execute(
+            "UPDATE sessions SET chat_mode = $1 WHERE id = $2 AND user_id = $3",
+            chat_mode, session_id, user_id,
+        )
+    return result.endswith("1")
+
+
+async def set_doc_type(session_id: str, user_id: str, doc_type: str) -> bool:
+    """Override the auto-detected document type ('meeting' or 'document')."""
+    if doc_type not in ("meeting", "document"):
+        raise ValueError("doc_type must be 'meeting' or 'document'")
+    async with db.pool().acquire() as conn:
+        result = await conn.execute(
+            "UPDATE sessions SET doc_type = $1 WHERE id = $2 AND user_id = $3",
+            doc_type, session_id, user_id,
+        )
+    return result.endswith("1")
+
+
+async def set_doc_profile(session_id: str, user_id: str, profile: dict) -> None:
+    """Store the generic-document extraction result (summary/key_points/action_guidance/…)."""
+    async with db.pool().acquire() as conn:
+        await conn.execute(
+            "UPDATE sessions SET doc_profile = $1 WHERE id = $2 AND user_id = $3",
+            json.dumps(profile), session_id, user_id,
+        )
 
 
 async def get_session(session_id: str, user_id: str) -> Optional[dict]:
@@ -190,7 +250,8 @@ async def list_sessions_async(user_id: str) -> list[dict]:
     async with db.pool().acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, filename, created_at, last_accessed, extraction, chat_history
+            SELECT id, filename, created_at, last_accessed, extraction, chat_history,
+                   doc_type, chat_mode
             FROM sessions WHERE user_id = $1
             ORDER BY last_accessed DESC
             """,
@@ -198,6 +259,7 @@ async def list_sessions_async(user_id: str) -> list[dict]:
         )
     result = []
     for row in rows:
+        row_keys = row.keys()
         chat_history = json.loads(row["chat_history"]) if isinstance(row["chat_history"], str) else (row["chat_history"] or [])
         result.append({
             "id": row["id"], "filename": row["filename"],
@@ -205,6 +267,8 @@ async def list_sessions_async(user_id: str) -> list[dict]:
             "last_accessed": row["last_accessed"] or row["created_at"],
             "has_extraction": row["extraction"] is not None,
             "chat_turns": len(chat_history) // 2,
+            "doc_type": (row["doc_type"] if "doc_type" in row_keys else None) or "meeting",
+            "chat_mode": (row["chat_mode"] if "chat_mode" in row_keys else None) or "document",
         })
     return result
 

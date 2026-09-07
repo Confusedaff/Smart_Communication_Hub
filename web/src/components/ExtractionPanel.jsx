@@ -1,10 +1,12 @@
-export default function ExtractionPanel({ extraction, loading, error }) {
+export default function ExtractionPanel({ extraction, loading, error, docType = "meeting" }) {
   if (loading) {
     return (
       <div className="panel-state">
         <div className="spinner lg" />
-        <p>Analysing transcript…</p>
-        <span className="panel-sub">Extracting decisions and action items</span>
+        <p>{docType === "document" ? "Analysing document…" : "Analysing transcript…"}</p>
+        <span className="panel-sub">
+          {docType === "document" ? "Extracting key facts and guidance" : "Extracting decisions and action items"}
+        </span>
       </div>
     );
   }
@@ -28,6 +30,109 @@ export default function ExtractionPanel({ extraction, loading, error }) {
     );
   }
 
+  return docType === "document"
+    ? <DocumentExtraction extraction={extraction} />
+    : <MeetingExtraction extraction={extraction} />;
+}
+
+/* ── General document extraction view ─────────────────────────────────── */
+function DocumentExtraction({ extraction }) {
+  const kindLabels = {
+    job_posting: "Job Posting",
+    policy: "Policy",
+    contract: "Contract",
+    report: "Report",
+    brochure: "Brochure",
+    guide: "Guide",
+    other: "Document",
+  };
+  const actionLabel = extraction.doc_kind === "job_posting" ? "How to Prepare" : "Recommended Actions";
+
+  const summary        = extraction.summary        || "";
+  const keyPoints       = extraction.key_points      || [];
+  const sections        = extraction.sections        || [];
+  const actionGuidance  = extraction.action_guidance || [];
+  const openQuestions   = extraction.open_questions  || [];
+
+  return (
+    <div className="extraction-panel">
+      <div className="doc-profile-kind">{kindLabels[extraction.doc_kind] || "Document"}</div>
+
+      {summary && (
+        <div className="summary-card">
+          <div className="summary-label">Summary</div>
+          <p className="summary-text">{summary}</p>
+        </div>
+      )}
+
+      <div className="stats-row">
+        <StatCard value={keyPoints.length}      label="Key Points"       color="var(--accent)" />
+        <StatCard value={actionGuidance.length} label={actionLabel}      color="var(--accent2)" />
+        <StatCard value={sections.length}       label="Sections"         color="var(--muted-text)" />
+        <StatCard value={openQuestions.length}  label="Open Questions"   color="var(--muted-text)" />
+      </div>
+
+      <Section title="Key Points" count={keyPoints.length} color="var(--accent)">
+        {keyPoints.length === 0 ? (
+          <EmptyRow message="No key points detected" />
+        ) : (
+          <div className="doc-profile-list">
+            {keyPoints.map((k, i) => (
+              <div className="doc-profile-item" key={i}>
+                <span className="doc-profile-item__marker">{i + 1}</span>
+                <span>{k}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      <Section title={actionLabel} count={actionGuidance.length} color="var(--accent2)">
+        {actionGuidance.length === 0 ? (
+          <EmptyRow message="No specific guidance detected" />
+        ) : (
+          <div className="doc-profile-list">
+            {actionGuidance.map((a, i) => (
+              <div className="doc-profile-item" key={i}>
+                <span className="doc-profile-item__marker">✓</span>
+                <span>{a}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      {sections.length > 0 && (
+        <Section title="Sections" count={sections.length} color="var(--muted-text)">
+          <div className="doc-profile-list">
+            {sections.map((s, i) => (
+              <div className="doc-profile-section" key={i}>
+                <div className="doc-profile-section__title">{s.title}</div>
+                {s.gist && <div className="doc-profile-section__gist">{s.gist}</div>}
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {openQuestions.length > 0 && (
+        <Section title="Open Questions" count={openQuestions.length} color="var(--muted-text)">
+          <div className="doc-profile-list">
+            {openQuestions.map((q, i) => (
+              <div className="doc-profile-item" key={i}>
+                <span className="doc-profile-item__marker">?</span>
+                <span>{q}</span>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+    </div>
+  );
+}
+
+/* ── Meeting extraction view (original behaviour) ─────────────────────── */
+function MeetingExtraction({ extraction }) {
   const decisions    = extraction.decisions    || [];
   const actionItems  = extraction.action_items || [];
   const summary      = extraction.summary      || "";

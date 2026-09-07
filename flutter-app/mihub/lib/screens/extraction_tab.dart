@@ -6,11 +6,13 @@ import '../theme/app_theme.dart';
 class ExtractionTab extends StatefulWidget {
   final String sessionId;
   final String engine;
+  final String docType; // "meeting" | "document"
 
   const ExtractionTab({
     super.key,
     required this.sessionId,
     required this.engine,
+    this.docType = 'meeting',
   });
 
   @override
@@ -33,7 +35,9 @@ class _ExtractionTabState extends State<ExtractionTab> {
   @override
   void didUpdateWidget(ExtractionTab old) {
     super.didUpdateWidget(old);
-    if (widget.engine != old.engine) _runExtraction();
+    if (widget.engine != old.engine || widget.docType != old.docType) {
+      _runExtraction();
+    }
   }
 
   Future<void> _runExtraction() async {
@@ -71,6 +75,7 @@ class _ExtractionTabState extends State<ExtractionTab> {
 
   Widget _buildLoading() {
     final t = AppTheme.of(context);
+    final isDocument = widget.docType == 'document';
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -99,9 +104,11 @@ class _ExtractionTabState extends State<ExtractionTab> {
           ),
           const SizedBox(height: 6),
           Text(
-            widget.engine == 'llm'
-                ? 'This may take up to 90s with Ollama.'
-                : 'Running NLP pipeline…',
+            isDocument
+                ? 'Analysing document with the LLM analyst…'
+                : (widget.engine == 'llm'
+                    ? 'This may take up to 90s with Ollama.'
+                    : 'Running NLP pipeline…'),
             style: TextStyle(color: t.textMuted, fontSize: 13),
           ),
         ],
@@ -149,8 +156,14 @@ class _ExtractionTabState extends State<ExtractionTab> {
   }
 
   Widget _buildResults() {
-    final t = AppTheme.of(context);
     final ex = _extraction!;
+    return widget.docType == 'document'
+        ? _buildDocumentResults(ex)
+        : _buildMeetingResults(ex);
+  }
+
+  Widget _buildMeetingResults(ExtractionModel ex) {
+    final t = AppTheme.of(context);
     return RefreshIndicator(
       onRefresh: _runExtraction,
       color: t.accent,
@@ -198,6 +211,192 @@ class _ExtractionTabState extends State<ExtractionTab> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  static const Map<String, String> _kindLabels = {
+    'job_posting': 'Job Posting',
+    'policy': 'Policy',
+    'contract': 'Contract',
+    'report': 'Report',
+    'brochure': 'Brochure',
+    'guide': 'Guide',
+    'other': 'Document',
+  };
+
+  Widget _buildDocumentResults(ExtractionModel ex) {
+    final t = AppTheme.of(context);
+    final actionLabel =
+        ex.docKind == 'job_posting' ? 'How to Prepare' : 'Recommended Actions';
+    return RefreshIndicator(
+      onRefresh: _runExtraction,
+      color: t.accent,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _docKindBadge(_kindLabels[ex.docKind] ?? 'Document', t),
+            const SizedBox(height: 14),
+            if (ex.summary.isNotEmpty) ...[
+              _buildSummaryCard(ex.summary, t),
+              const SizedBox(height: 20),
+            ],
+            Row(
+              children: [
+                _statChip('${ex.keyPoints.length}', 'Key Points',
+                    t.accent, Icons.list_alt_outlined, t),
+                const SizedBox(width: 10),
+                _statChip('${ex.actionGuidance.length}', actionLabel,
+                    t.accentGreen, Icons.checklist_rounded, t),
+              ],
+            ),
+            const SizedBox(height: 20),
+            _buildSection(
+              title: 'Key Points',
+              count: ex.keyPoints.length,
+              color: t.accent,
+              children: ex.keyPoints.isEmpty
+                  ? [_emptyState('No key points detected', t)]
+                  : ex.keyPoints
+                      .asMap()
+                      .entries
+                      .map((e) => _docListCard('${e.key + 1}', e.value, t.accent, t))
+                      .toList(),
+            ),
+            const SizedBox(height: 20),
+            _buildSection(
+              title: actionLabel,
+              count: ex.actionGuidance.length,
+              color: t.accentGreen,
+              children: ex.actionGuidance.isEmpty
+                  ? [_emptyState('No specific guidance detected', t)]
+                  : ex.actionGuidance
+                      .map((a) => _docListCard('✓', a, t.accentGreen, t))
+                      .toList(),
+            ),
+            if (ex.sections.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              _buildSection(
+                title: 'Sections',
+                count: ex.sections.length,
+                color: t.accentPurple,
+                children: ex.sections.map((s) => _docSectionCard(s, t)).toList(),
+              ),
+            ],
+            if (ex.openQuestions.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              _buildSection(
+                title: 'Open Questions',
+                count: ex.openQuestions.length,
+                color: t.accentAmber,
+                children: ex.openQuestions
+                    .map((q) => _docListCard('?', q, t.accentAmber, t))
+                    .toList(),
+              ),
+            ],
+            if (ex.timing != null) ...[
+              const SizedBox(height: 16),
+              _buildTimingCard(ex.timing!, t),
+            ],
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton.icon(
+                onPressed: _runExtraction,
+                icon: const Icon(Icons.refresh_rounded, size: 15),
+                label: const Text('Re-extract'),
+                style: TextButton.styleFrom(foregroundColor: t.textMuted),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _docKindBadge(String label, AppThemeTokens t) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: t.accentGlow,
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: t.borderGlow),
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          color: t.accent,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.6,
+        ),
+      ),
+    );
+  }
+
+  Widget _docListCard(String marker, String text, Color color, AppThemeTokens t) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: t.bgCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: t.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              shape: BoxShape.circle,
+              border: Border.all(color: color.withOpacity(0.25)),
+            ),
+            child: Text(marker,
+                style: TextStyle(
+                    color: color, fontSize: 11, fontWeight: FontWeight.w800)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(text,
+                style: TextStyle(
+                    color: t.textPrimary,
+                    fontSize: 14,
+                    height: 1.55)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _docSectionCard(DocSection s, AppThemeTokens t) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: t.bgCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: t.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(s.title,
+              style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14)),
+          if (s.gist.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(s.gist,
+                style: TextStyle(color: t.textSecondary, fontSize: 13, height: 1.5)),
+          ],
+        ],
       ),
     );
   }

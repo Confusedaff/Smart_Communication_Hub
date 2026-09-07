@@ -36,6 +36,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isExporting = false;
   int _alertCount = 0;
 
+  String get _docType => widget.session.docType;
+  bool get _isDocumentMode => _docType == 'document';
+
+  /// Screens shown in the IndexedStack/NavigationBar, in order. Action Items
+  /// (owner/deadline tracking) and Analytics (speaker sentiment) are
+  /// meeting-shaped features that don't map onto a general document like a
+  /// hiring brochure or policy PDF, so they're hidden in document mode.
+  List<Widget> get _tabScreens => [
+        ExtractionTab(sessionId: widget.session.sessionId, engine: _engine, docType: _docType),
+        if (!_isDocumentMode)
+          ActionItemsTab(
+            sessionId: widget.session.sessionId,
+            onAlertCount: (count) => setState(() => _alertCount = count),
+          ),
+        if (!_isDocumentMode) AnalyticsTab(sessionId: widget.session.sessionId),
+        ChatTab(sessionId: widget.session.sessionId, docType: _docType),
+        TranscriptTab(sessionId: widget.session.sessionId),
+      ];
+
   void _openMultiChat(BuildContext context) {
     final all = widget.allSessions.isNotEmpty
         ? widget.allSessions
@@ -93,7 +112,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _onNavTap(int index) {
-    if (index == 5) {
+    if (index == _tabScreens.length) {
       widget.onNewUpload();
     } else {
       setState(() => _selectedIndex = index);
@@ -242,9 +261,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 20),
               _infoRow(t, Icons.fingerprint, 'Session ID', widget.session.sessionId),
               _infoRow(t, Icons.insert_drive_file_outlined, 'File', widget.session.filename),
+              _infoRow(t, Icons.category_outlined, 'Type', _isDocumentMode ? 'Document' : 'Meeting'),
               _infoRow(t, Icons.segment, 'Segments', '${widget.session.segmentCount}'),
               _infoRow(t, Icons.text_fields, 'Characters', '${widget.session.charCount}'),
-              _infoRow(t, Icons.people_outline, 'Speakers', widget.session.speakers.join(', ')),
+              if (widget.session.tableCount > 0)
+                _infoRow(t, Icons.table_chart_outlined, 'Tables', '${widget.session.tableCount}'),
+              if (widget.session.imageCount > 0)
+                _infoRow(t, Icons.image_outlined, 'Images', '${widget.session.imageCount}'),
+              if (widget.session.speakers.isNotEmpty)
+                _infoRow(t, Icons.people_outline, 'Speakers', widget.session.speakers.join(', ')),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -291,16 +316,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: _buildAppBar(),
       body: IndexedStack(
         index: _selectedIndex,
-        children: [
-          ExtractionTab(sessionId: widget.session.sessionId, engine: _engine),
-          ActionItemsTab(
-            sessionId: widget.session.sessionId,
-            onAlertCount: (count) => setState(() => _alertCount = count),
-          ),
-          AnalyticsTab(sessionId: widget.session.sessionId),
-          ChatTab(sessionId: widget.session.sessionId),
-          TranscriptTab(sessionId: widget.session.sessionId),
-        ],
+        children: _tabScreens,
       ),
       bottomNavigationBar: _buildBottomNav(),
     );
@@ -335,11 +351,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       actions: [
-        _EngineToggle(
-          value: _engine,
-          onChanged: (v) => setState(() => _engine = v),
-        ),
-        const SizedBox(width: 4),
+        if (!_isDocumentMode)
+          _EngineToggle(
+            value: _engine,
+            onChanged: (v) => setState(() => _engine = v),
+          ),
+        if (!_isDocumentMode) const SizedBox(width: 4),
         _isExporting
             ? Padding(
                 padding: const EdgeInsets.all(12),
@@ -376,6 +393,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildBottomNav() {
     final t = AppTheme.of(context);
+    final destinations = <NavigationDestination>[
+      const NavigationDestination(
+        icon: Icon(Icons.bolt_outlined),
+        selectedIcon: Icon(Icons.bolt_rounded),
+        label: 'Extract',
+      ),
+      if (!_isDocumentMode)
+        NavigationDestination(
+          icon: _alertCount > 0
+              ? Badge(
+                  label: Text('$_alertCount'),
+                  child: const Icon(Icons.task_alt_outlined),
+                )
+              : const Icon(Icons.task_alt_outlined),
+          selectedIcon: _alertCount > 0
+              ? Badge(
+                  label: Text('$_alertCount'),
+                  child: const Icon(Icons.task_alt_rounded),
+                )
+              : const Icon(Icons.task_alt_rounded),
+          label: 'Actions',
+        ),
+      if (!_isDocumentMode)
+        const NavigationDestination(
+          icon: Icon(Icons.bar_chart_outlined),
+          selectedIcon: Icon(Icons.bar_chart_rounded),
+          label: 'Analytics',
+        ),
+      const NavigationDestination(
+        icon: Icon(Icons.chat_bubble_outline),
+        selectedIcon: Icon(Icons.chat_bubble_rounded),
+        label: 'Chat',
+      ),
+      NavigationDestination(
+        icon: const Icon(Icons.article_outlined),
+        selectedIcon: const Icon(Icons.article_rounded),
+        label: _isDocumentMode ? 'Document' : 'Transcript',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.add_circle_outline),
+        selectedIcon: Icon(Icons.add_circle_rounded),
+        label: 'New',
+      ),
+    ];
+
     return Container(
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: t.border, width: 1)),
@@ -383,48 +445,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: _onNavTap,
-        destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.bolt_outlined),
-            selectedIcon: Icon(Icons.bolt_rounded),
-            label: 'Extract',
-          ),
-          NavigationDestination(
-            icon: _alertCount > 0
-                ? Badge(
-                    label: Text('$_alertCount'),
-                    child: const Icon(Icons.task_alt_outlined),
-                  )
-                : const Icon(Icons.task_alt_outlined),
-            selectedIcon: _alertCount > 0
-                ? Badge(
-                    label: Text('$_alertCount'),
-                    child: const Icon(Icons.task_alt_rounded),
-                  )
-                : const Icon(Icons.task_alt_rounded),
-            label: 'Actions',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart_rounded),
-            label: 'Analytics',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble_rounded),
-            label: 'Chat',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.article_outlined),
-            selectedIcon: Icon(Icons.article_rounded),
-            label: 'Transcript',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.add_circle_outline),
-            selectedIcon: Icon(Icons.add_circle_rounded),
-            label: 'New',
-          ),
-        ],
+        destinations: destinations,
       ),
     );
   }

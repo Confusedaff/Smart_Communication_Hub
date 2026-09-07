@@ -7,8 +7,9 @@ import '../theme/app_theme.dart';
 
 class ChatTab extends StatefulWidget {
   final String sessionId;
+  final String docType; // "meeting" | "document" — adapts copy/suggestions
 
-  const ChatTab({super.key, required this.sessionId});
+  const ChatTab({super.key, required this.sessionId, this.docType = 'meeting'});
 
   @override
   State<ChatTab> createState() => _ChatTabState();
@@ -20,12 +21,18 @@ class _ChatTabState extends State<ChatTab> {
   final ScrollController _scrollController = ScrollController();
   bool _isSending = false;
 
+  // "document" = grounded/strict answers only from the file (default).
+  // "general"  = blend file content with the model's broader knowledge.
+  String _answerMode = 'document';
+
   static const _storagePrefix = 'chat_history_';
+  static const _modePrefix = 'chat_answer_mode_';
 
   @override
   void initState() {
     super.initState();
     _loadHistory();
+    _loadAnswerMode();
   }
 
   @override
@@ -36,6 +43,27 @@ class _ChatTabState extends State<ChatTab> {
   }
 
   String get _storageKey => '$_storagePrefix${widget.sessionId}';
+  String get _modeStorageKey => '$_modePrefix${widget.sessionId}';
+
+  Future<void> _loadAnswerMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_modeStorageKey);
+    if (saved == 'document' || saved == 'general') {
+      if (mounted) setState(() => _answerMode = saved!);
+    }
+  }
+
+  Future<void> _setAnswerMode(String mode) async {
+    setState(() => _answerMode = mode);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_modeStorageKey, mode);
+    // Persist as the session's default too, so other clients pick it up.
+    try {
+      await ApiService.setChatMode(widget.sessionId, mode);
+    } catch (_) {
+      // Non-fatal — the per-message mode override still applies locally.
+    }
+  }
 
   Future<void> _loadHistory() async {
     final prefs = await SharedPreferences.getInstance();
@@ -132,7 +160,11 @@ class _ChatTabState extends State<ChatTab> {
     _scrollToBottom();
 
     try {
-      final response = await ApiService.sendMessage(widget.sessionId, question);
+      final response = await ApiService.sendMessage(
+        widget.sessionId,
+        question,
+        mode: _answerMode,
+      );
       if (mounted) {
         setState(() {
           _messages.add(ChatMessage(
@@ -213,16 +245,65 @@ class _ChatTabState extends State<ChatTab> {
         children: [
           Text('${_messages.length ~/ 2} exchanges',
               style: TextStyle(color: t.textMuted, fontSize: 11)),
-          TextButton.icon(
-            onPressed: _clearHistory,
-            icon: Icon(Icons.delete_outline, size: 13, color: t.textMuted),
-            label: Text('Clear',
-                style: TextStyle(color: t.textMuted, fontSize: 12)),
-            style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          Row(
+            children: [
+              _buildAnswerModeToggle(t),
+              const SizedBox(width: 6),
+              TextButton.icon(
+                onPressed: _clearHistory,
+                icon: Icon(Icons.delete_outline, size: 13, color: t.textMuted),
+                label: Text('Clear',
+                    style: TextStyle(color: t.textMuted, fontSize: 12)),
+                style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              ),
+            ],
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Small pill toggle: "Grounded" (strict, document-only) vs "General"
+  /// (blends the file with the model's broader knowledge).
+  Widget _buildAnswerModeToggle(AppThemeTokens t) {
+    Widget pill(String label, String value) {
+      final active = _answerMode == value;
+      return GestureDetector(
+        onTap: () => _setAnswerMode(value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: active ? t.accent : Colors.transparent,
+            borderRadius: BorderRadius.circular(100),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: active ? t.onAccent : t.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: t.bgElevated,
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: t.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          pill('🎯 Grounded', 'document'),
+          pill('🌐 General', 'general'),
         ],
       ),
     );
@@ -230,12 +311,20 @@ class _ChatTabState extends State<ChatTab> {
 
   Widget _buildEmptyState() {
     final t = AppTheme.of(context);
-    const suggestions = [
-      ('What decisions were made?', Icons.check_circle_outline),
-      ('What action items were assigned?', Icons.task_alt_outlined),
-      ('Who is responsible for the launch?', Icons.person_outline),
-      ('Summarise the key points.', Icons.summarize_outlined),
-    ];
+    final isDocument = widget.docType == 'document';
+    final suggestions = isDocument
+        ? const [
+            ('What are the key points?', Icons.list_alt_outlined),
+            ('How should I prepare for this?', Icons.checklist_rounded),
+            ('What are the requirements?', Icons.rule_outlined),
+            ('Summarise this document.', Icons.summarize_outlined),
+          ]
+        : const [
+            ('What decisions were made?', Icons.check_circle_outline),
+            ('What action items were assigned?', Icons.task_alt_outlined),
+            ('Who is responsible for the launch?', Icons.person_outline),
+            ('Summarise the key points.', Icons.summarize_outlined),
+          ];
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
       child: Column(
@@ -250,14 +339,16 @@ class _ChatTabState extends State<ChatTab> {
             child: Icon(Icons.chat_bubble_outline, size: 32, color: t.accent),
           ),
           const SizedBox(height: 20),
-          Text('Ask about this meeting',
+          Text(isDocument ? 'Ask about this document' : 'Ask about this meeting',
               style: TextStyle(
                   color: t.textPrimary,
                   fontWeight: FontWeight.w700,
                   fontSize: 18)),
           const SizedBox(height: 8),
           Text(
-              'Responses include citations with speaker, timestamp, and excerpt.',
+              isDocument
+                  ? 'Grounded mode cites the document; switch to General for advice that goes beyond it.'
+                  : 'Responses include citations with speaker, timestamp, and excerpt.',
               style: TextStyle(
                   color: t.textSecondary, fontSize: 13, height: 1.5),
               textAlign: TextAlign.center),
@@ -413,6 +504,18 @@ class _ChatTabState extends State<ChatTab> {
                     ],
                   ],
                 ),
+                if (c.filename != null && c.filename!.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Icon(Icons.description_outlined,
+                          size: 11, color: t.textMuted),
+                      const SizedBox(width: 4),
+                      Text(c.filename!,
+                          style: TextStyle(color: t.textMuted, fontSize: 11)),
+                    ],
+                  ),
+                ],
                 if (c.excerpt.isNotEmpty) ...[
                   const SizedBox(height: 5),
                   Text(
@@ -494,11 +597,13 @@ class _ChatTabState extends State<ChatTab> {
               controller: _inputController,
               onSubmitted: (_) => _sendMessage(),
               enabled: !_isSending,
-              decoration: const InputDecoration(
-                hintText: 'Ask about the meeting…',
+              decoration: InputDecoration(
+                hintText: widget.docType == 'document'
+                    ? 'Ask about the document…'
+                    : 'Ask about the meeting…',
                 isDense: true,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 12),
               ),
               textInputAction: TextInputAction.send,
               maxLines: 4,

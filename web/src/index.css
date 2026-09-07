@@ -2507,3 +2507,157 @@ input, textarea { font: inherit; color: inherit; }
   border-radius: 10px;
   background: var(--surface);
 }
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   MODE SWITCHER — document type (upload) + chat answer style
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+.mode-switcher-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+}
+.mode-switcher-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mode-switcher-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-text);
+}
+.mode-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mode-pill {
+  padding: 7px 14px;
+  border-radius: 100px;
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  color: var(--muted-text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.mode-pill:hover { color: var(--text); border-color: var(--accent); }
+.mode-pill.active {
+  color: var(--bg, #0b0b0f);
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 18px var(--accent-glow);
+}
+
+/* Chat answer-mode toggle (inside ChatPanel topbar) */
+.answer-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 100px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+}
+.answer-mode-btn {
+  padding: 5px 12px;
+  border-radius: 100px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted-text);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.answer-mode-btn:hover { color: var(--text); }
+.answer-mode-btn.active {
+  color: var(--bg, #0b0b0f);
+  background: var(--accent);
+}
+
+/* Doc-type badge shown in sidebar / chat hint */
+.doc-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 100px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--muted-text);
+}
+
+/* Document profile view (ExtractionPanel in "document" doc_type mode) */
+.doc-profile-kind {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 100px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 10px;
+}
+.doc-profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.doc-profile-item {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.doc-profile-item__marker {
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.doc-profile-section {
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.doc-profile-section__title { font-weight: 700; font-size: 0.85rem; margin-bottom: 3px; }
+.doc-profile-section__gist { color: var(--muted-text); font-size: 0.83rem; }
+
+/* Table & image summary chips shown after upload / in transcript panel */
+.artifact-chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.artifact-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 100px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  color: var(--muted-text);
+}

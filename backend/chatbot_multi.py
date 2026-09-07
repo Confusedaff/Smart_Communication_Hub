@@ -38,16 +38,44 @@ logger = logging.getLogger(__name__)
 
 # ── Prompt templates ──────────────────────────────────────────────────────────
 
-_SYSTEM = """You are a precise meeting intelligence assistant with access to 
-MULTIPLE meeting transcripts. You answer questions by searching across all 
-meetings provided.
+def _system_prompt(mode: str) -> str:
+    if mode == "general":
+        return """You are a knowledgeable assistant with access to MULTIPLE uploaded \
+documents/transcripts. Answer questions by searching across all of them.
 
 Rules:
-1. Only use information from the transcripts provided — never invent or assume.
-2. Always cite your sources: include the meeting filename, speaker name, and
-   the relevant excerpt from that specific meeting.
-3. If the answer spans multiple meetings, include citations from each relevant meeting.
-4. If the answer is not found in any of the transcripts, say so clearly.
+1. If the question is about their content, ground your answer in it and cite the \
+filename, speaker (if applicable), and relevant excerpt.
+2. If the question goes beyond what's in the documents, use your own general \
+knowledge to give a complete, useful answer — blend it naturally with anything \
+relevant you found.
+3. Never fabricate a citation for something that came from general knowledge.
+4. Respond ONLY with valid JSON — no preamble, no markdown, no explanation.
+
+Response format:
+{
+  "answer": "Your answer here.",
+  "citations": [
+    {
+      "session_id": "session uuid",
+      "filename": "source filename",
+      "speaker": "Name or null",
+      "excerpt": "exact or paraphrased quote",
+      "timestamp": "HH:MM:SS or null"
+    }
+  ]
+}"""
+
+    return """You are a precise assistant with access to MULTIPLE uploaded documents \
+and/or meeting transcripts. You answer questions by searching across all of them 
+provided.
+
+Rules:
+1. Only use information from the documents/transcripts provided — never invent or assume.
+2. Always cite your sources: include the source filename, speaker name (if applicable), and
+   the relevant excerpt from that specific source.
+3. If the answer spans multiple sources, include citations from each relevant one.
+4. If the answer is not found in any of the sources, say so clearly.
 5. Respond ONLY with valid JSON — no preamble, no markdown, no explanation.
 
 Response format:
@@ -56,7 +84,7 @@ Response format:
   "citations": [
     {
       "session_id": "session uuid",
-      "filename": "meeting filename",
+      "filename": "source filename",
       "speaker": "Name or null",
       "excerpt": "exact or paraphrased quote",
       "timestamp": "HH:MM:SS or null"
@@ -64,12 +92,20 @@ Response format:
   ]
 }"""
 
-_CONTEXT_PROMPT = """You have access to {session_count} meeting transcript(s).
+
+def _context_prompt(mode: str, session_count: int, transcripts_block: str, question: str) -> str:
+    instruction = (
+        "Answer the following question. Use the sources below when relevant, and your "
+        "own knowledge to fill in anything they don't cover."
+        if mode == "general"
+        else "Answer the following question using ONLY the sources above."
+    )
+    return f"""You have access to {session_count} document(s)/transcript(s).
 
 {transcripts_block}
 
-Answer the following question using ONLY the meeting transcripts above.
-When citing, include the filename so the user knows which meeting the 
+{instruction}
+When citing, include the filename so the user knows which source the
 information comes from.
 Respond with JSON only.
 
@@ -212,6 +248,7 @@ async def answer_multi(
     question: str,
     sessions: list[dict],
     chat_history: list[dict],
+    mode: str = "document",
 ) -> dict:
     """
     Answer a question by searching across all provided sessions.
@@ -222,6 +259,8 @@ async def answer_multi(
     sessions      : List of full session dicts from the session store
                     (each has id, filename, segments, raw_text, etc.).
     chat_history  : Conversation history from the current chat thread.
+    mode          : "document" (strict, grounded-only) or "general" (blend
+                    with the model's own knowledge when sources fall short).
 
     Returns
     -------
@@ -246,6 +285,9 @@ async def answer_multi(
             segments=sess["segments"],
             chat_history=chat_history,
             filename=sess["filename"],
+            doc_type=sess.get("doc_type") or "meeting",
+            mode=mode,
+            tables=sess.get("tables"),
         )
         # Enrich citations with session_id / filename
         for c in result.get("citations", []):
@@ -257,14 +299,14 @@ async def answer_multi(
     timing_info = get_expected_duration("chat")
     logger.info(
         f"[MultiChat] Cross-session query | sessions={len(sessions)} "
-        f"| backend={timing_info['backend']}"
+        f"| mode={mode} backend={timing_info['backend']}"
     )
 
     # Retrieve top segments via TF-IDF
     top_segments = _retrieve_top_segments(question, sessions)
     logger.info(f"[MultiChat] Retrieved {len(top_segments)} segments from {len(sessions)} sessions")
 
-    if not top_segments:
+    if not top_segments and mode != "general":
         return {
             "answer": "No relevant content found across the available transcripts.",
             "citations": [],
@@ -272,9 +314,9 @@ async def answer_multi(
             "_sessions_searched": len(sessions),
         }
 
-    transcripts_block = _build_multi_context(top_segments, sessions)
+    transcripts_block = _build_multi_context(top_segments, sessions) if top_segments else "(no matching content found)"
 
-    messages = [{"role": "system", "content": _SYSTEM}]
+    messages = [{"role": "system", "content": _system_prompt(mode)}]
 
     # Include recent chat history
     for turn in chat_history[-6:]:
@@ -283,11 +325,7 @@ async def answer_multi(
 
     messages.append({
         "role": "user",
-        "content": _CONTEXT_PROMPT.format(
-            session_count=len(sessions),
-            transcripts_block=transcripts_block,
-            question=question,
-        ),
+        "content": _context_prompt(mode, len(sessions), transcripts_block, question),
     })
 
     start = time.perf_counter()

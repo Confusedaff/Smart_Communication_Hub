@@ -8,13 +8,25 @@ import ActionItemsPanel from "./ActionItemsPanel";
 import LLMTimingBadge from "./LLMTimingBadge";
 import AccountMenu from "./AccountMenu";
 
-const TABS = [
+const ALL_TABS = [
   { id: "extract",    label: "Extraction",   icon: "⚡" },
   { id: "actions",    label: "Action Items", icon: "✅" },
   { id: "analytics",  label: "Analytics",    icon: "📊" },
   { id: "chat",       label: "Chatbot",      icon: "💬" },
   { id: "transcript", label: "Transcript",   icon: "📄" },
 ];
+
+// Action Items (owner/deadline tracking) and Analytics (speaker sentiment)
+// are meeting-shaped features that don't map onto a general document like a
+// hiring brochure or policy PDF — hide them in "document" mode rather than
+// showing empty/nonsensical panels.
+function tabsForDocType(docType) {
+  if (docType === "document") {
+    return ALL_TABS.filter((t) => t.id !== "actions" && t.id !== "analytics")
+      .map((t) => (t.id === "transcript" ? { ...t, label: "Document" } : t));
+  }
+  return ALL_TABS;
+}
 
 export default function DashboardView({ session, onNewUpload, onOpenHistory, sessionCount, allSessions = [], user, onLogout }) {
   const [tab,          setTab]          = useState("extract");
@@ -33,9 +45,11 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
     runExtraction(false, engine);
   }, [session.session_id]);
 
-  // Fetch alert count whenever extraction completes
+  // Fetch alert count whenever extraction completes (meeting-only feature)
   useEffect(() => {
     if (!extraction) return;
+    const docType = session.doc_type || "meeting";
+    if (docType === "document") return;
     const sid = session.session_id || session.id;
     api.deadlineAlerts(sid).then((d) => setAlertCount(d.alert_count || 0)).catch(() => {});
   }, [extraction]);
@@ -56,6 +70,10 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
   const timingTask = extracting ? "extract" : tab === "chat" ? "chat" : "extract";
 
   const sessionId = session.session_id || session.id;
+  const docType = session.doc_type || "meeting";
+  const tableCount = session.table_count || 0;
+  const imageCount = session.image_count || 0;
+  const TABS = tabsForDocType(docType);
 
   return (
     <div className="dashboard" style={{ maxWidth: "1600px", width: "100%" }}>
@@ -73,6 +91,13 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
               {session.segment_count} segments
               {session.speakers?.length > 0 && ` · ${session.speakers.length} speakers`}
             </span>
+            <div className="artifact-chip-row">
+              <span className="doc-type-badge">
+                {docType === "document" ? "📄 Document" : "🗣 Meeting"}
+              </span>
+              {tableCount > 0 && <span className="artifact-chip">▦ {tableCount} table{tableCount !== 1 ? "s" : ""}</span>}
+              {imageCount > 0 && <span className="artifact-chip">🖼 {imageCount} image{imageCount !== 1 ? "s" : ""}</span>}
+            </div>
           </div>
         </div>
 
@@ -87,7 +112,9 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
               <span>{t.label}</span>
               {t.id === "extract" && extraction && (
                 <span className="nav-badge">
-                  {(extraction.decisions?.length || 0) + (extraction.action_items?.length || 0)}
+                  {docType === "document"
+                    ? (extraction.key_points?.length || 0) + (extraction.action_guidance?.length || 0)
+                    : (extraction.decisions?.length || 0) + (extraction.action_items?.length || 0)}
                 </span>
               )}
               {t.id === "actions" && alertCount > 0 && (
@@ -100,28 +127,44 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
           ))}
         </nav>
 
-        {/* Engine selector */}
-        <div className="engine-selector">
-          <label className="engine-label">Extractor engine</label>
-          <div className="engine-pills">
-            {["nlp", "llm"].map((e) => (
-              <button
-                key={e}
-                className={`engine-pill ${engine === e ? "active" : ""}`}
-                onClick={() => setEngine(e)}
-              >
-                {e === "nlp" ? "🧠 NLP" : "🤖 LLM"}
-              </button>
-            ))}
+        {/* Engine selector — only meaningful for meeting-shaped extraction;
+            general documents always use the LLM document analyst. */}
+        {docType !== "document" && (
+          <div className="engine-selector">
+            <label className="engine-label">Extractor engine</label>
+            <div className="engine-pills">
+              {["nlp", "llm"].map((e) => (
+                <button
+                  key={e}
+                  className={`engine-pill ${engine === e ? "active" : ""}`}
+                  onClick={() => setEngine(e)}
+                >
+                  {e === "nlp" ? "🧠 NLP" : "🤖 LLM"}
+                </button>
+              ))}
+            </div>
+            <button
+              className="re-extract-btn"
+              onClick={() => runExtraction(true, engine)}
+              disabled={extracting}
+            >
+              {extracting ? "Running…" : "↻ Re-extract"}
+            </button>
           </div>
-          <button
-            className="re-extract-btn"
-            onClick={() => runExtraction(true, engine)}
-            disabled={extracting}
-          >
-            {extracting ? "Running…" : "↻ Re-extract"}
-          </button>
-        </div>
+        )}
+        {docType === "document" && (
+          <div className="engine-selector">
+            <label className="engine-label">Extractor engine</label>
+            <div className="engine-badge" style={{ marginBottom: "8px" }}>🤖 LLM document analyst</div>
+            <button
+              className="re-extract-btn"
+              onClick={() => runExtraction(true, engine)}
+              disabled={extracting}
+            >
+              {extracting ? "Running…" : "↻ Re-extract"}
+            </button>
+          </div>
+        )}
 
         {/* LLM Timing */}
         <div className="sidebar-timing">
@@ -181,7 +224,7 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
 
           <div className="top-bar-right">
             <div className="engine-badge">
-              {engine === "nlp" ? "🧠 spaCy NLP" : "🤖 Ollama LLM"}
+              {docType === "document" ? "🤖 Document analyst" : engine === "nlp" ? "🧠 spaCy NLP" : "🤖 Ollama LLM"}
             </div>
 
             <button className="history-pill" onClick={onOpenHistory}>
@@ -201,7 +244,7 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
 
         <div className="panel-area">
           {tab === "extract" && (
-            <ExtractionPanel extraction={extraction} loading={extracting} error={extractError} />
+            <ExtractionPanel extraction={extraction} loading={extracting} error={extractError} docType={docType} />
           )}
           {tab === "actions" && (
             <ActionItemsPanel sessionId={sessionId} extraction={extraction} onAlertCount={setAlertCount} />
@@ -210,7 +253,7 @@ export default function DashboardView({ session, onNewUpload, onOpenHistory, ses
             <AnalyticsPanel sessionId={sessionId} />
           )}
           {tab === "chat" && (
-            <ChatPanel sessionId={sessionId} allSessions={allSessions} />
+            <ChatPanel sessionId={sessionId} allSessions={allSessions} docType={docType} />
           )}
           {tab === "transcript" && (
             <TranscriptPanel sessionId={sessionId} />
